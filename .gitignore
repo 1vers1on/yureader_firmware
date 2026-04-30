@@ -1,0 +1,64 @@
+# west / nrf connect sdk checkout
+.west/
+bootloader/
+modules/
+nrf/
+nrfxlib/
+test/
+tools/
+zephyr/
+
+# build outputs
+build/
+build-*/
+out/
+twister-out/
+
+# generated compile metadata
+compile_commands.json
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+rules.ninja
+build.ninja
+.ninja_deps
+.ninja_log
+
+# zephyr/ncs generated files
+zephyr/.config
+zephyr/include/generated/
+zephyr/generated/
+generated/
+*.elf
+*.hex
+*.bin
+*.map
+*.lst
+*.uf2
+*.signed
+*.merged.hex
+*.stat
+*.su
+
+# logs
+*.log
+log/
+logs/
+
+# python junk
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# editor / ide stuff
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# os junk
+.DS_Store
+Thumbs.db
