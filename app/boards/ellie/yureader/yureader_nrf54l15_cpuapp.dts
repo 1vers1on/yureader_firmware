@@ -310,6 +310,8 @@
 		status = "okay";
 		spi-max-frequency = <8000000>;
 
+		cd-gpios = <&gpio2 10 GPIO_ACTIVE_LOW>;
+
 		mmc {
 			compatible = "zephyr,sdmmc-disk";
 			disk-name = "SD";
