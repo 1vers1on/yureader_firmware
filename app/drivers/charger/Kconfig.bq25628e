@@ -1,0 +1,7 @@
+config CHARGER_BQ25628E
+    bool "BQ25628E Battery Charger"
+    default y
+    depends on DT_HAS_TI_BQ25628E_ENABLED
+    depends on I2C
+    help
+      Enable BQ25628E battery charger driver.

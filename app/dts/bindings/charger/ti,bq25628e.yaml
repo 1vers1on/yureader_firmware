@@ -1,0 +1,51 @@
+description: ti bq25628e i2c single-cell battery charger
+
+compatible: "ti,bq25628e"
+
+include: i2c-device.yaml
+
+properties:
+  constant-charge-current-max-microamp:
+    type: int
+    required: true
+    default: 320000
+    description: init-time charge current limit in microamps
+
+  constant-charge-voltage-max-microvolt:
+    type: int
+    required: true
+    default: 4200000
+    description: charge voltage limit in microvolts
+
+  input-current-limit-microamp:
+    type: int
+    default: 0
+    description: init-time input current limit, 0 skips setting it
+
+  input-voltage-limit-millivolt:
+    type: int
+    default: 0
+    description: init-time input voltage limit in millivolts, 0 skips setting it
+  
+  enable-watchdog:
+    type: boolean
+    description: enable the watchdog timer
+
+  charge-term-current-microamp:
+    type: int
+    default: 75000
+    description: |
+      charge termination current in uA.
+      bq25628e range is 5000uA to 310000uA in 5000uA steps.
+
+  charge-termination-disabled:
+    type: boolean
+    description: disable automatic charge termination by clearing EN_TERM.
+
+  precharge-current-microamp:
+    type: int
+    default: 30000
+    description: |
+      precharge current in uA.
+      bq25628e range is 10000uA to 310000uA in 10000uA steps.
+  

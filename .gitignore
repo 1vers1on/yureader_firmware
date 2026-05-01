@@ -58,7 +58,10 @@ env/
 *.swp
 *.swo
 *~
+.cache
 
 # os junk
 .DS_Store
 Thumbs.db
+
+compile_commands.json

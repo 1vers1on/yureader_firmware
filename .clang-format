@@ -1,0 +1,54 @@
+---
+BasedOnStyle: LLVM
+Language: Cpp
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+BreakBeforeBraces: Attach
+PointerAlignment: Left
+DerivePointerAlignment: false
+
+SpaceBeforeParens: ControlStatements
+SpaceBeforeAssignmentOperators: true
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceAfterCStyleCast: false
+
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortBlocksOnASingleLine: Never
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: false
+
+IndentCaseLabels: false
+ContinuationIndentWidth: 4
+
+BinPackArguments: true
+BinPackParameters: true
+AlignAfterOpenBracket: Align
+AlignOperands: Align
+
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+
+AlignConsecutiveDeclarations:
+  Enabled: false
+
+SortIncludes: false
+IncludeBlocks: Preserve
+
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
+SeparateDefinitionBlocks: Always
+
+ReflowComments: false
+
+StatementMacros:
+  - LOG_MODULE_REGISTER
+  - K_MSGQ_DEFINE

@@ -59,7 +59,7 @@
 			label = "Push button 5";
 			zephyr,code = <INPUT_KEY_5>;
 		};
-	}
+	};
 };
 
 &cpuapp_sram {
@@ -234,7 +234,16 @@
 		v-empty = <3000>;
 	};
 
-	// TODO: add the BQ25628E
+	bq25628e: bq25628e@6a {
+		compatible = "ti,bq25628e";
+		reg = <0x6a>;
+		status = "okay";
+		constant-charge-current-max-microamp = <400000>;
+		constant-charge-voltage-max-microvolt = <4200000>;
+
+		charge-term-current-microamp = <75000>;
+		precharge-current-microamp = <30000>;
+	};
 };
 
 &spi00 {

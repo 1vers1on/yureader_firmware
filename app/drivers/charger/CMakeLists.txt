@@ -1,0 +1,1 @@
+target_sources_ifdef(CONFIG_CHARGER_BQ25628E app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/charger_bq25628e.c)
