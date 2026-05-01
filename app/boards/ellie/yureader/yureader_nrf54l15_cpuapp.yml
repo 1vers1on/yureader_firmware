@@ -1,0 +1,21 @@
+identifier: yureader/nrf54l15/cpuapp
+name: YuReader
+type: mcu
+arch: arm
+toolchain:
+  - gnuarmemb
+  - zephyr
+sysbuild: true
+ram: 188
+flash: 1428
+supported:
+  - adc
+  - counter
+  - dmic
+  - gpio
+  - i2c
+  - i2s
+  - pwm
+  - retained_mem
+  - spi
+  - watchdog

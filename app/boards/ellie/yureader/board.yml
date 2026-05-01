@@ -1,0 +1,6 @@
+board:
+  name: yureader
+  full_name: YuReader
+  vendor: ellie
+  socs:
+    - name: nrf54l15
