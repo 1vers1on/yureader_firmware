@@ -21,14 +21,14 @@
 		};
 	};
 
-	i2c20_default: i2c20_default {
+	i2c21_default: i2c21_default {
 		group1 {
 			psels = <NRF_PSEL(TWIM_SCL, 1, 7)>,
 			       <NRF_PSEL(TWIM_SDA, 1, 8)>;
 		};
 	};
 
-	i2c20_sleep: i2c20_sleep {
+	i2c21_sleep: i2c21_sleep {
 		group1 {
 			psels = <NRF_PSEL(TWIM_SCL, 1, 7)>,
 			       <NRF_PSEL(TWIM_SDA, 1, 8)>;
@@ -36,4 +36,52 @@
 		};
 	};
 
+	spi00_default: spi00_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 2, 1)>,
+				<NRF_PSEL(SPIM_MOSI, 2, 2)>,
+				<NRF_PSEL(SPIM_MISO, 2, 4)>;
+		};
+	};
+
+	spi00_sleep: spi00_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 2, 1)>,
+				<NRF_PSEL(SPIM_MOSI, 2, 2)>,
+				<NRF_PSEL(SPIM_MISO, 2, 4)>;
+			low-power-enable;
+		};
+	};
+
+	spi20_default: spi20_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 1, 11)>,
+				<NRF_PSEL(SPIM_MOSI, 1, 12)>;
+		};
+	};
+
+	spi20_sleep: spi20_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 1, 11)>,
+				<NRF_PSEL(SPIM_MOSI, 1, 12)>;
+			low-power-enable;
+		};
+	};
+
+	spi30_default: spi30_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 0, 0)>,
+				<NRF_PSEL(SPIM_MOSI, 0, 1)>,
+				<NRF_PSEL(SPIM_MISO, 0, 2)>;
+		};
+	};
+
+	spi30_sleep: spi30_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 0, 0)>,
+				<NRF_PSEL(SPIM_MOSI, 0, 1)>,
+				<NRF_PSEL(SPIM_MISO, 0, 2)>;
+			low-power-enable;
+		};
+	};
 };

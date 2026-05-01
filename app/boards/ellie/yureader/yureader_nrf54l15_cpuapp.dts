@@ -2,6 +2,7 @@
 
 #include <nordic/nrf54l15_cpuapp.dtsi>
 #include <zephyr/dt-bindings/i2c/i2c.h>
+#include <zephyr/dt-bindings/sensor/lsm6dsv16x.h>
 #include "yureader-pinctrl.dtsi"
 
 / {
@@ -14,12 +15,51 @@
 		zephyr,uart-mcumgr = &uart00;
 		zephyr,bt-mon-uart = &uart00;
 		zephyr,bt-c2h-uart = &uart00;
+		zephyr,display = &ssd1680;
 		zephyr,code-partition = &slot0_partition;
 		zephyr,sram = &cpuapp_sram;
 		zephyr,flash-controller = &rram_controller;
 		zephyr,flash = &cpuapp_rram;
 		zephyr,boot-mode = &boot_mode0;
 	};
+	
+	buttons {
+		button0: button_0 {
+			gpios = <&gpio1 13 GPIO_ACTIVE_LOW>;
+			label = "Push button 0";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+
+		button1: button_1 {
+			gpios = <&gpio1 2 GPIO_ACTIVE_LOW>;
+			label = "Push button 1";
+			zephyr,code = <INPUT_KEY_1>;
+		};
+
+		button2: button_3 {
+			gpios = <&gpio1 3 GPIO_ACTIVE_LOW>;
+			label = "Push button 2";
+			zephyr,code = <INPUT_KEY_2>;
+		};
+
+		button3: button_4 {
+			gpios = <&gpio1 4 GPIO_ACTIVE_LOW>;
+			label = "Push button 3";
+			zephyr,code = <INPUT_KEY_3>;
+		};
+
+		button4: button_5 {
+			gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;
+			label = "Push button 4";
+			zephyr,code = <INPUT_KEY_4>;
+		};
+
+		button5: button_6 {
+			gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
+			label = "Push button 5";
+			zephyr,code = <INPUT_KEY_5>;
+		};
+	}
 };
 
 &cpuapp_sram {
@@ -138,13 +178,13 @@
 	pinctrl-names = "default", "sleep";
 };
 
-&i2c20 {
+&i2c21 {
 	compatible = "nordic,nrf-twim";
 	status = "okay";
 	clock-frequency = <I2C_BITRATE_FAST>;
 
-	pinctrl-0 = <&i2c20_default>;
-	pinctrl-1 = <&i2c20_sleep>;
+	pinctrl-0 = <&i2c21_default>;
+	pinctrl-1 = <&i2c21_sleep>;
 	pinctrl-names = "default", "sleep";
 
 	bme280: bme280@76 {
@@ -177,5 +217,94 @@
 		loop-gain = "HIGH";
 	};
 
-	// TODO: add the MAX17055 and the BQ25628E
+	max17055: max17055@36 {
+		compatible = "maxim,max17055";
+		reg = <0x36>;
+		status = "okay";
+
+		design-capacity = <1450>;
+		design-voltage = <3700>;
+		desired-voltage = <4200>;
+
+		desired-charging-current = <400>;
+
+		i-chg-term = <75>;
+
+		rsense-mohms = <10>;
+		v-empty = <3000>;
+	};
+
+	// TODO: add the BQ25628E
+};
+
+&spi00 {
+	status = "okay";
+	cs-gpios = <&gpio2 5 GPIO_ACTIVE_LOW>;
+	pinctrl-0 = <&spi00_default>;
+	pinctrl-1 = <&spi00_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	// TODO: add sx1262
+};
+
+&spi20 {
+	status = "okay";
+	cs-gpios = <&gpio2 6 GPIO_ACTIVE_LOW>;
+	pinctrl-0 = <&spi20_default>;
+	pinctrl-1 = <&spi20_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+};
+
+/ {
+	mipi_dbi_ssd1680 {
+		compatible = "zephyr,mipi-dbi-spi";
+		spi-dev = <&spi20>;
+		dc-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ssd1680: ssd1680@0 {
+			compatible = "solomon,ssd1680";
+			reg = <0>;
+			status = "okay";
+			mipi-max-frequency = <8000000>;
+			busy-gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+
+			width = <296>;
+			height = <128>;
+
+			rotation = <0>;
+		};
+	};
+};
+
+&spi30 {
+	status = "okay";
+	cs-gpios = <&gpio0 3 GPIO_ACTIVE_LOW>;
+	pinctrl-0 = <&spi30_default>;
+	pinctrl-1 = <&spi30_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	sdhc0: sdhc@0 {
+		compatible = "zephyr,sdhc-spi-slot";
+		reg = <0>;
+		status = "okay";
+		spi-max-frequency = <8000000>;
+
+		mmc {
+			compatible = "zephyr,sdmmc-disk";
+			disk-name = "SD";
+			status = "okay";
+		};
+	};
 };
