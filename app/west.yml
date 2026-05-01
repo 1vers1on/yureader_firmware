@@ -2,14 +2,14 @@ manifest:
   version: "0.13"
 
   remotes:
-    - name: ncs
+    - name: nrfconnect
       url-base: https://github.com/nrfconnect
 
   projects:
-    - name: sdk-nrf
-      path: nrf
-      remote: ncs
+    - name: nrf
+      remote: nrfconnect
       repo-path: sdk-nrf
+      path: nrf
       revision: v3.3.0
       import: true
 
