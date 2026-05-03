@@ -23,6 +23,9 @@ add_custom_target(app_zig_build
     DEPENDS ${CMAKE_SOURCE_DIR}/build/libapp.a
 )
 
-add_dependencies(app app_zig_build)
+add_library(app_zig STATIC IMPORTED)
+set_target_properties(app_zig PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/build/libapp.a)
+add_dependencies(app_zig app_zig_build)
+target_link_libraries(app PRIVATE app_zig)
 
 add_subdirectory(drivers)
