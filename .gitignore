@@ -65,3 +65,4 @@ env/
 Thumbs.db
 
 compile_commands.json
+**/.zig-cache

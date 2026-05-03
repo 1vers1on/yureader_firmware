@@ -21,6 +21,12 @@
 		zephyr,flash-controller = &rram_controller;
 		zephyr,flash = &cpuapp_rram;
 		zephyr,boot-mode = &boot_mode0;
+		zephyr,display = &ssd1680;
+	};
+
+	displays {
+		compatible = "zephyr,displays";
+		displays = <&ssd1680>;
 	};
 	
 	buttons {
