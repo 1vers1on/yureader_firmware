@@ -66,6 +66,10 @@
 			zephyr,code = <INPUT_KEY_5>;
 		};
 	};
+
+	zephyr,user {
+		sd-cd-gpios = <&gpio2 10 GPIO_ACTIVE_LOW>;
+	};
 };
 
 &cpuapp_sram {
@@ -315,8 +319,6 @@
 		reg = <0>;
 		status = "okay";
 		spi-max-frequency = <8000000>;
-
-		cd-gpios = <&gpio2 10 GPIO_ACTIVE_LOW>;
 
 		mmc {
 			compatible = "zephyr,sdmmc-disk";
