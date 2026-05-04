@@ -1,5 +1,3 @@
-const std = @import("std");
-
 const z = @import("zephyr.zig");
 
 pub const Level = enum(u8) {
@@ -73,34 +71,16 @@ pub fn Logger(comptime cfg: Config) type {
         ) void {
             if (!enabled(level)) return;
 
+            const prefix_args = .{ z.uptimeGet(), cfg.module_name, level.to_str() };
+
             if (cfg.show_timestamp and cfg.show_module) {
-                _ = z.printk(
-                    color(level) ++ "[%lld ms] [%s] [%s] " ++ fmt ++ reset() ++ "\n",
-                    z.k_uptime_get(),
-                    cfg.module_name.ptr,
-                    level.to_str().ptr,
-                    args,
-                );
+                z.printk(color(level) ++ "[{} ms] [{s}] [{s}] " ++ fmt ++ reset() ++ "\n", prefix_args ++ args);
             } else if (cfg.show_timestamp) {
-                _ = z.printk(
-                    color(level) ++ "[%lld ms] [%s] " ++ fmt ++ reset() ++ "\n",
-                    z.k_uptime_get(),
-                    level.to_str().ptr,
-                    args,
-                );
+                z.printk(color(level) ++ "[{} ms] [{s}] " ++ fmt ++ reset() ++ "\n", .{ z.uptimeGet(), level.to_str() } ++ args);
             } else if (cfg.show_module) {
-                _ = z.printk(
-                    color(level) ++ "[%s] [%s] " ++ fmt ++ reset() ++ "\n",
-                    cfg.module_name.ptr,
-                    level.to_str().ptr,
-                    args,
-                );
+                z.printk(color(level) ++ "[{s}] [{s}] " ++ fmt ++ reset() ++ "\n", .{ cfg.module_name, level.to_str() } ++ args);
             } else {
-                _ = z.printk(
-                    color(level) ++ "[%s] " ++ fmt ++ reset() ++ "\n",
-                    level.to_str().ptr,
-                    args,
-                );
+                z.printk(color(level) ++ "[{s}] " ++ fmt ++ reset() ++ "\n", .{ level.to_str() } ++ args);
             }
         }
 
@@ -131,19 +111,19 @@ pub fn Logger(comptime cfg: Config) type {
         pub fn hexdump(comptime level: Level, label: []const u8, data: []const u8) void {
             if (!enabled(level)) return;
 
-            log(level, "{s}: {} bytes", .{ label, data.len });
+            z.printk(color(level) ++ "[{s}] " ++ "{s}: {} bytes" ++ reset() ++ "\n", .{ level.to_str(), label, data.len });
 
             var i: usize = 0;
             while (i < data.len) : (i += 16) {
                 const end = @min(i + 16, data.len);
 
-                _ = z.printk("  %04x: ", i);
+                z.printk("  {x:0>4}: ", .{ i });
 
                 for (data[i..end]) |b| {
-                    _ = z.printk("%02x ", b);
+                    z.printk("{x:0>2} ", .{ b });
                 }
 
-                _ = z.printk("\n");
+                z.printk("\n", .{});
             }
         }
     };
