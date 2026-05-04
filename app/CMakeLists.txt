@@ -5,7 +5,7 @@ list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(yureader)
 
-target_sources(app PRIVATE src/main.c src/bindings/zephyr.c src/bindings/sd.c)
+target_sources(app PRIVATE src/main.c src/bindings/zephyr.c src/bindings/sd.c src/terminus.c)
 
 target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

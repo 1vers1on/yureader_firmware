@@ -104,27 +104,27 @@ pub fn Logger(comptime cfg: Config) type {
             }
         }
 
-        pub fn trace(comptime fmt: []const u8, args: anytype) void {
+        pub inline fn trace(comptime fmt: []const u8, args: anytype) void {
             log(.trace, fmt, args);
         }
 
-        pub fn debug(comptime fmt: []const u8, args: anytype) void {
+        pub inline fn debug(comptime fmt: []const u8, args: anytype) void {
             log(.debug, fmt, args);
         }
 
-        pub fn info(comptime fmt: []const u8, args: anytype) void {
+        pub inline fn info(comptime fmt: []const u8, args: anytype) void {
             log(.info, fmt, args);
         }
 
-        pub fn warn(comptime fmt: []const u8, args: anytype) void {
+        pub inline fn warn(comptime fmt: []const u8, args: anytype) void {
             log(.warn, fmt, args);
         }
 
-        pub fn err(comptime fmt: []const u8, args: anytype) void {
+        pub inline fn err(comptime fmt: []const u8, args: anytype) void {
             log(.err, fmt, args);
         }
 
-        pub fn critical(comptime fmt: []const u8, args: anytype) void {
+        pub inline fn critical(comptime fmt: []const u8, args: anytype) void {
             log(.critical, fmt, args);
         }
 
