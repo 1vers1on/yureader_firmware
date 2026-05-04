@@ -1,43 +1,48 @@
 const z = @import("zephyr.zig");
 const sd = @import("hardware/sd.zig");
+const logger = @import("logger.zig");
+
+const log = logger.Logger(.{
+    .module_name = "main",
+});
 
 fn sd_card_inserted_callback() void {
-    z.printk("SD card inserted callback triggered.\n", .{});
+    log.info("SD card inserted callback triggered.", .{});
     sd.mount() catch {
-        z.printk("Failed to mount SD card during insertion.\n", .{});
+        log.err("Failed to mount SD card during insertion.", .{});
     };
 }
 
 fn sd_card_removed_callback() void {
-    z.printk("SD card removed callback triggered.\n", .{});
+    log.info("SD card removed callback triggered.", .{});
     sd.unmount() catch {
-        z.printk("Failed to unmount SD card during removal.\n", .{});
+        log.err("Failed to unmount SD card during removal.", .{});
     };
 }
 
 export fn zig_main() callconv(.c) void {
-    z.printk("Hello from Zig!\n", .{});
+    log.info("Starting YuReader firmware...", .{});
 
-    z.printk("Registering SD card callbacks...\n", .{});
+    log.info("Registering SD card callbacks...", .{});
     sd.register_callbacks(
         &sd_card_inserted_callback,
         &sd_card_removed_callback,
     );
 
     sd.init() catch {
-        z.printk("Failed to initialize SD card interface.\n", .{});
+        log.err("Failed to initialize SD card interface.", .{});
         return;
     };
 
     if (sd.card_present()) {
-        z.printk("SD card is present.\n", .{});
-        z.printk("Mounting SD card...\n", .{});
+        log.info("SD card is present.", .{});
+        log.info("Mounting SD card...", .{});
         sd.mount() catch {
-            z.printk("Failed to mount SD card.\n", .{});
+            log.err("Failed to mount SD card.", .{});
             return;
         };
-        z.printk("SD card mounted successfully.\n", .{});
+        log.info("SD card mounted successfully.", .{});
     } else {
-        z.printk("SD card is not present.\n", .{});
+        log.info("SD card is not present.", .{});
     }
 }

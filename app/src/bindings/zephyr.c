@@ -27,3 +27,11 @@ export void zig_k_msleep(int32_t ms) {
 export void zig_printk_str(const char *s) {
     printk("%s", s);
 }
+
+export int64_t zig_k_uptime_get(void) {
+    return k_uptime_get();
+}
+
+export uint32_t zig_k_cycle_get_32(void) {
+    return k_cycle_get_32();
+}

@@ -7,6 +7,8 @@ extern fn zig_k_malloc(size: usize) ?*anyopaque;
 extern fn zig_k_free(ptr: ?*anyopaque) void;
 extern fn zig_k_calloc(nmemb: usize, size: usize) ?*anyopaque;
 extern fn zig_k_realloc(ptr: ?*anyopaque, size: usize) ?*anyopaque;
+extern fn zig_k_uptime_get() i64;
+extern fn zig_k_cycle_get_32() u32;
 
 pub fn k_msleep(ms: i32) void {
     zig_k_msleep(ms);
@@ -65,4 +67,12 @@ pub fn reallocBytes(buf: []u8, new_len: usize) ?[]u8 {
     const raw = zig_k_realloc(@ptrCast(buf.ptr), new_len) orelse return null;
     const ptr: [*]u8 = @ptrCast(raw);
     return ptr[0..new_len];
+}
+
+pub fn uptimeGet() i64 {
+    return zig_k_uptime_get();
+}
+
+pub fn cycleGet32() u32 {
+    return zig_k_cycle_get_32();
 }
