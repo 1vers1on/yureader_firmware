@@ -9,7 +9,7 @@ pub const Level = enum(u8) {
     critical = 5,
     off = 255,
 
-    pub fn to_str(self: Level) []const u8 {
+    pub fn to_str(self: @This()) []const u8 {
         return switch (self) {
             .trace => "TRACE",
             .debug => "DEBUG",
@@ -24,8 +24,8 @@ pub const Level = enum(u8) {
 
 pub const Config = struct {
     module_name: []const u8,
-    compile_level: Level = .debug, 
-    runtime_level: Level = .debug, 
+    compile_level: Level = .debug,
+    runtime_level: Level = .debug,
     show_timestamp: bool = true,
     show_module: bool = true,
     colors: bool = false,
@@ -37,12 +37,12 @@ pub fn Logger(comptime cfg: Config) type {
 
         pub var runtime_level: Level = cfg.runtime_level;
 
-        fn enabled(comptime level: Level) bool {
+        inline fn enabled(comptime level: Level) bool {
             return @intFromEnum(level) >= @intFromEnum(cfg.compile_level) and
                 @intFromEnum(level) >= @intFromEnum(runtime_level);
         }
 
-        fn color(comptime level: Level) []const u8 {
+        inline fn color(comptime level: Level) []const u8 {
             if (!cfg.colors) return "";
 
             return switch (level) {
@@ -56,11 +56,11 @@ pub fn Logger(comptime cfg: Config) type {
             };
         }
 
-        fn reset() []const u8 {
+        inline fn reset() []const u8 {
             return if (cfg.colors) "\x1b[0m" else "";
         }
 
-        pub fn setLevel(level: Level) void {
+        pub inline fn setLevel(level: Level) void {
             runtime_level = level;
         }
 
