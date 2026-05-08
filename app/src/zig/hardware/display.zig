@@ -43,48 +43,50 @@ fn check(rc: c_int) Error!void {
     if (rc < 0) return Error.ZephyrError;
 }
 
-pub fn display_is_ready() bool {
-    return zig_display_is_ready() != 0;
-}
+pub const Display = struct {
+    pub fn is_ready() bool {
+        return zig_display_is_ready() != 0;
+    }
 
-pub fn display_get_caps() Error!DisplayCaps {
-    var caps: DisplayCaps = undefined;
-    try check(zig_display_get_caps(&caps));
-    return caps;
-}
+    pub fn get_caps() Error!DisplayCaps {
+        var caps: DisplayCaps = undefined;
+        try check(zig_display_get_caps(&caps));
+        return caps;
+    }
 
-pub fn display_set_mono01() Error!void {
-    try check(zig_display_set_mono01());
-}
+    pub fn set_mono01() Error!void {
+        try check(zig_display_set_mono01());
+    }
 
-pub fn display_set_mono10() Error!void {
-    try check(zig_display_set_mono10());
-}
+    pub fn set_mono10() Error!void {
+        try check(zig_display_set_mono10());
+    }
 
-pub fn display_set_blanking_on() Error!void {
-    try check(zig_display_set_blanking_on());
-}
+    pub fn set_blanking_on() Error!void {
+        try check(zig_display_set_blanking_on());
+    }
 
-pub fn display_set_blanking_off() Error!void {
-    try check(zig_display_set_blanking_off());
-}
+    pub fn set_blanking_off() Error!void {
+        try check(zig_display_set_blanking_off());
+    }
 
-pub fn display_write(
-    x: u16,
-    y: u16,
-    width: u16,
-    height: u16,
-    pitch: u16,
-    buf: [*]const u8,
-    buf_size: usize,
-) Error!void {
-    try check(zig_display_write(x, y, width, height, pitch, buf, buf_size));
-}
+    pub fn write(
+        x: u16,
+        y: u16,
+        width: u16,
+        height: u16,
+        pitch: u16,
+        buf: [*]const u8,
+        buf_size: usize,
+    ) Error!void {
+        try check(zig_display_write(x, y, width, height, pitch, buf, buf_size));
+    }
 
-pub fn display_set_orientation(orientation: DisplayOrientation) Error!void {
-    try check(zig_display_set_orientation(orientation));
-}
+    pub fn set_orientation(orientation: DisplayOrientation) Error!void {
+        try check(zig_display_set_orientation(orientation));
+    }
 
-pub fn display_clear() Error!void {
-    try check(zig_display_clear());
-}
+    pub fn clear() Error!void {
+        try check(zig_display_clear());
+    }
+};

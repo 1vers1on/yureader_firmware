@@ -231,6 +231,7 @@ pub const EllipseCmd = struct {
 
 pub const ArcCmd = struct {
     center: Point,
+    radius: Dim,
     start_angle: f64, // in radians
     end_angle: f64, // in radians
     fill: ?Fill = null,
@@ -240,6 +241,23 @@ pub const ArcCmd = struct {
 pub const PointCmd = struct {
     point: Point,
     color: Color = .black,
+};
+
+pub const QuadraticBezierCmd = struct {
+    start: Point,
+    control: Point,
+    end: Point,
+    fill: ?Fill = null,
+    stroke: ?Stroke = .{},
+};
+
+pub const CubicBezierCmd = struct {
+    start: Point,
+    control1: Point,
+    control2: Point,
+    end: Point,
+    fill: ?Fill = null,
+    stroke: ?Stroke = .{},
 };
 
 pub const DrawCmd = union(enum) {
@@ -256,6 +274,8 @@ pub const DrawCmd = union(enum) {
     arc: ArcCmd,
     text: TextCmd,
     point: PointCmd,
+    quadratic_bezier: QuadraticBezierCmd,
+    cubic_bezier: CubicBezierCmd,
 
     blit: BlitCmd,
 
@@ -295,6 +315,7 @@ pub const Scene = struct {
 
     text_arena: std.ArrayListUnmanaged(u8) = .{},
     bitmap_arena: std.ArrayListUnmanaged(u8) = .{},
+    font_bitmap_arena: std.ArrayListUnmanaged(u8) = .{},
     points_arena: std.ArrayListUnmanaged(Point) = .{},
     fonts: std.ArrayListUnmanaged(FontMeta) = .{},
 
@@ -305,6 +326,7 @@ pub const Scene = struct {
         self.draw_cmds.deinit(allocator);
         self.text_arena.deinit(allocator);
         self.bitmap_arena.deinit(allocator);
+        self.font_bitmap_arena.deinit(allocator);
         self.points_arena.deinit(allocator);
         self.fonts.deinit(allocator);
         self.zones.deinit(allocator);
@@ -316,8 +338,25 @@ pub const Scene = struct {
         self.text_arena.clearRetainingCapacity();
         self.bitmap_arena.clearRetainingCapacity();
         self.points_arena.clearRetainingCapacity();
-        self.fonts.clearRetainingCapacity();
+        self.zones.clearRetainingCapacity();
         self.display_cmds.clearRetainingCapacity();
+    }
+
+    pub fn dirtyZones(self: *const Scene) []const RefreshZone {
+        return self.zones.items;
+    }
+
+    pub fn clearDirtyZones(self: *Scene) void {
+        self.zones.clearRetainingCapacity();
+    }
+
+    pub fn markDirty(self: *Scene, allocator: std.mem.Allocator, rect: Rect) void {
+        if (rect.width == 0 or rect.height == 0) return;
+
+        self.zones.append(allocator, .{
+            .id = @intCast(self.zones.items.len),
+            .rect = rect,
+        }) catch {};
     }
 
     pub fn appendPoints(
@@ -337,6 +376,51 @@ pub const Scene = struct {
         };
     }
 };
+
+fn dirtyRectFromPoints(points: []const Point) ?Rect {
+    if (points.len == 0) return null;
+
+    var min_x: i32 = @as(i32, points[0].x);
+    var max_x: i32 = @as(i32, points[0].x);
+    var min_y: i32 = @as(i32, points[0].y);
+    var max_y: i32 = @as(i32, points[0].y);
+
+    for (points[1..]) |point| {
+        const px: i32 = @as(i32, point.x);
+        const py: i32 = @as(i32, point.y);
+        if (px < min_x) min_x = px;
+        if (px > max_x) max_x = px;
+        if (py < min_y) min_y = py;
+        if (py > max_y) max_y = py;
+    }
+
+    const width = max_x - min_x + 1;
+    const height = max_y - min_y + 1;
+    if (width <= 0 or height <= 0) return null;
+
+    return .{
+        .x = @intCast(min_x),
+        .y = @intCast(min_y),
+        .width = @intCast(@min(width, std.math.maxInt(Dim))),
+        .height = @intCast(@min(height, std.math.maxInt(Dim))),
+    };
+}
+
+fn expandDirtyRect(rect: Rect, padding: i32) Rect {
+    if (padding <= 0) return rect;
+
+    const x = @as(i32, rect.x) - padding;
+    const y = @as(i32, rect.y) - padding;
+    const width = @as(i32, @intCast(rect.width)) + padding * 2;
+    const height = @as(i32, @intCast(rect.height)) + padding * 2;
+
+    return .{
+        .x = @intCast(x),
+        .y = @intCast(y),
+        .width = @intCast(@max(width, 0)),
+        .height = @intCast(@max(height, 0)),
+    };
+}
 
 pub const Framebuffer = struct {
     width: Dim,
@@ -373,7 +457,6 @@ pub const Framebuffer = struct {
 
 pub const Engine = struct {
     fb: Framebuffer,
-
     scene: Scene,
 };
 
@@ -677,9 +760,9 @@ pub fn registerFont(scene: *Scene, allocator: std.mem.Allocator, font_data: []co
 
     if (font_data.len < header_size + data_len) return error.InvalidFont;
 
-    const data_offset: u32 = @intCast(scene.bitmap_arena.items.len);
+    const data_offset: u32 = @intCast(scene.font_bitmap_arena.items.len);
 
-    try scene.bitmap_arena.appendSlice(
+    try scene.font_bitmap_arena.appendSlice(
         allocator,
         font_data[header_size .. header_size + data_len],
     );
@@ -1466,6 +1549,112 @@ fn polygonArea2Indexed(points: []const Point, indices: []const usize) i64 {
     return area2;
 }
 
+fn vec2Mid(a: Vec2, b: Vec2) Vec2 {
+    return .{
+        .x = (a.x + b.x) / 2.0,
+        .y = (a.y + b.y) / 2.0,
+    };
+}
+
+fn pointLineDistance(point: Vec2, a: Vec2, b: Vec2) f32 {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = std.math.sqrt(dx * dx + dy * dy);
+    if (len <= 0.0001) return vecLen(.{ .x = point.x - a.x, .y = point.y - a.y });
+
+    const cross_value = @abs((point.x - a.x) * dy - (point.y - a.y) * dx);
+    return cross_value / len;
+}
+
+fn appendUniquePoint(list: *std.ArrayListUnmanaged(Point), allocator: std.mem.Allocator, point: Vec2) !void {
+    const rounded = toPoint(point);
+    if (list.items.len == 0 or !samePoint(list.items[list.items.len - 1], rounded)) {
+        try list.append(allocator, rounded);
+    }
+}
+
+fn flattenQuadraticBezierRecursive(
+    list: *std.ArrayListUnmanaged(Point),
+    allocator: std.mem.Allocator,
+    p0: Vec2,
+    p1: Vec2,
+    p2: Vec2,
+    tolerance: f32,
+    depth: usize,
+) !void {
+    if (depth == 0 or pointLineDistance(p1, p0, p2) <= tolerance) {
+        try appendUniquePoint(list, allocator, p2);
+        return;
+    }
+
+    const p01 = vec2Mid(p0, p1);
+    const p12 = vec2Mid(p1, p2);
+    const p012 = vec2Mid(p01, p12);
+
+    try flattenQuadraticBezierRecursive(list, allocator, p0, p01, p012, tolerance, depth - 1);
+    try flattenQuadraticBezierRecursive(list, allocator, p012, p12, p2, tolerance, depth - 1);
+}
+
+fn flattenQuadraticBezier(
+    allocator: std.mem.Allocator,
+    start: Vec2,
+    control: Vec2,
+    end: Vec2,
+) !std.ArrayListUnmanaged(Point) {
+    var points = std.ArrayListUnmanaged(Point){};
+    errdefer points.deinit(allocator);
+
+    try points.append(allocator, toPoint(start));
+    try flattenQuadraticBezierRecursive(&points, allocator, start, control, end, 0.5, 12);
+
+    return points;
+}
+
+fn flattenCubicBezierRecursive(
+    list: *std.ArrayListUnmanaged(Point),
+    allocator: std.mem.Allocator,
+    p0: Vec2,
+    p1: Vec2,
+    p2: Vec2,
+    p3: Vec2,
+    tolerance: f32,
+    depth: usize,
+) !void {
+    const flat_enough = pointLineDistance(p1, p0, p3) <= tolerance and
+        pointLineDistance(p2, p0, p3) <= tolerance;
+
+    if (depth == 0 or flat_enough) {
+        try appendUniquePoint(list, allocator, p3);
+        return;
+    }
+
+    const p01 = vec2Mid(p0, p1);
+    const p12 = vec2Mid(p1, p2);
+    const p23 = vec2Mid(p2, p3);
+    const p012 = vec2Mid(p01, p12);
+    const p123 = vec2Mid(p12, p23);
+    const p0123 = vec2Mid(p012, p123);
+
+    try flattenCubicBezierRecursive(list, allocator, p0, p01, p012, p0123, tolerance, depth - 1);
+    try flattenCubicBezierRecursive(list, allocator, p0123, p123, p23, p3, tolerance, depth - 1);
+}
+
+fn flattenCubicBezier(
+    allocator: std.mem.Allocator,
+    start: Vec2,
+    control1: Vec2,
+    control2: Vec2,
+    end: Vec2,
+) !std.ArrayListUnmanaged(Point) {
+    var points = std.ArrayListUnmanaged(Point){};
+    errdefer points.deinit(allocator);
+
+    try points.append(allocator, toPoint(start));
+    try flattenCubicBezierRecursive(&points, allocator, start, control1, control2, end, 0.5, 12);
+
+    return points;
+}
+
 pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
     var clip_stack = std.ArrayListUnmanaged(Rect){};
     defer clip_stack.deinit(allocator);
@@ -1478,11 +1667,18 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
             .clear => |clear_cmd| {
                 if (clear_cmd.rect) |rect| {
                     clearRectRegion(engine, rect, clear_cmd.color, &clip_stack);
+                    engine.scene.markDirty(allocator, rect);
                 } else if (clip_stack.items.len == 0) {
                     const fill_value: u8 = if (clear_cmd.color == .black) 0xFF else 0x00;
                     for (engine.fb.pixels) |*pixel| {
                         pixel.* = fill_value;
                     }
+                    engine.scene.markDirty(allocator, .{
+                        .x = 0,
+                        .y = 0,
+                        .width = engine.fb.width,
+                        .height = engine.fb.height,
+                    });
                 } else {
                     clearRectRegion(engine, .{
                         .x = 0,
@@ -1490,6 +1686,12 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                         .width = engine.fb.width,
                         .height = engine.fb.height,
                     }, clear_cmd.color, &clip_stack);
+                    engine.scene.markDirty(allocator, .{
+                        .x = 0,
+                        .y = 0,
+                        .width = engine.fb.width,
+                        .height = engine.fb.height,
+                    });
                 }
             },
             .transform => |transform_cmd| {
@@ -1526,6 +1728,10 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                 const a = toPoint(m.transformPoint(toVec2(line_cmd.a)));
                 const b = toPoint(m.transformPoint(toVec2(line_cmd.b)));
                 drawLine(a.x, a.y, b.x, b.y, line_cmd.stroke, line_cmd.stroke.width, &clip_stack, engine);
+
+                if (dirtyRectFromPoints(&.{ a, b })) |bounds| {
+                    engine.scene.markDirty(allocator, expandDirtyRect(bounds, @as(i32, line_cmd.stroke.width)));
+                }
             },
             .rect => |rect_cmd| {
                 const m = currentMatrix(&stack);
@@ -1563,6 +1769,11 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                     drawLine(quad.c.x, quad.c.y, quad.d.x, quad.d.y, stroke, stroke.width, &clip_stack, engine);
                     drawLine(quad.d.x, quad.d.y, quad.a.x, quad.a.y, stroke, stroke.width, &clip_stack, engine);
                 }
+
+                if (dirtyRectFromPoints(&transformed_points)) |bounds| {
+                    const padding: i32 = if (rect_cmd.stroke) |stroke| @as(i32, stroke.width) else 0;
+                    engine.scene.markDirty(allocator, expandDirtyRect(bounds, padding));
+                }
             },
             .triangle => |triangle_cmd| {
                 const m = currentMatrix(&stack);
@@ -1579,6 +1790,140 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                     drawLine(a.x, a.y, b.x, b.y, stroke, stroke.width, &clip_stack, engine);
                     drawLine(b.x, b.y, c.x, c.y, stroke, stroke.width, &clip_stack, engine);
                     drawLine(c.x, c.y, a.x, a.y, stroke, stroke.width, &clip_stack, engine);
+                }
+
+                if (dirtyRectFromPoints(&.{ a, b, c })) |bounds| {
+                    const padding: i32 = if (triangle_cmd.stroke) |stroke| @as(i32, stroke.width) else 0;
+                    engine.scene.markDirty(allocator, expandDirtyRect(bounds, padding));
+                }
+            },
+            .quadratic_bezier => |quadratic_cmd| {
+                const m = currentMatrix(&stack);
+                const start = m.transformPoint(toVec2(quadratic_cmd.start));
+                const control = m.transformPoint(toVec2(quadratic_cmd.control));
+                const end = m.transformPoint(toVec2(quadratic_cmd.end));
+
+                var points = flattenQuadraticBezier(allocator, start, control, end) catch continue;
+                defer points.deinit(allocator);
+
+                if (quadratic_cmd.fill) |fill| {
+                    if (points.items.len >= 3) {
+                        if (earClipTriangulate(allocator, points.items)) |triangles| {
+                            defer allocator.free(triangles);
+
+                            var i: usize = 0;
+                            while (i + 2 < triangles.len) : (i += 3) {
+                                const a = triangles[i + 0];
+                                const b = triangles[i + 1];
+                                const c = triangles[i + 2];
+
+                                drawFilledTriangle(
+                                    engine,
+                                    a.x,
+                                    a.y,
+                                    b.x,
+                                    b.y,
+                                    c.x,
+                                    c.y,
+                                    fill,
+                                    &clip_stack,
+                                );
+                            }
+                        } else |_| {
+                            // invalid or degenerate curve fill; skip it
+                        }
+                    }
+                }
+
+                if (quadratic_cmd.stroke) |stroke| {
+                    if (points.items.len >= 2) {
+                        var i: usize = 0;
+                        while (i + 1 < points.items.len) : (i += 1) {
+                            const a = points.items[i];
+                            const b = points.items[i + 1];
+
+                            drawLine(
+                                a.x,
+                                a.y,
+                                b.x,
+                                b.y,
+                                stroke,
+                                stroke.width,
+                                &clip_stack,
+                                engine,
+                            );
+                        }
+                    }
+                }
+
+                if (dirtyRectFromPoints(points.items)) |bounds| {
+                    const padding: i32 = if (quadratic_cmd.stroke) |stroke| @as(i32, stroke.width) else 0;
+                    engine.scene.markDirty(allocator, expandDirtyRect(bounds, padding));
+                }
+            },
+            .cubic_bezier => |cubic_cmd| {
+                const m = currentMatrix(&stack);
+                const start = m.transformPoint(toVec2(cubic_cmd.start));
+                const control1 = m.transformPoint(toVec2(cubic_cmd.control1));
+                const control2 = m.transformPoint(toVec2(cubic_cmd.control2));
+                const end = m.transformPoint(toVec2(cubic_cmd.end));
+
+                var points = flattenCubicBezier(allocator, start, control1, control2, end) catch continue;
+                defer points.deinit(allocator);
+
+                if (cubic_cmd.fill) |fill| {
+                    if (points.items.len >= 3) {
+                        if (earClipTriangulate(allocator, points.items)) |triangles| {
+                            defer allocator.free(triangles);
+
+                            var i: usize = 0;
+                            while (i + 2 < triangles.len) : (i += 3) {
+                                const a = triangles[i + 0];
+                                const b = triangles[i + 1];
+                                const c = triangles[i + 2];
+
+                                drawFilledTriangle(
+                                    engine,
+                                    a.x,
+                                    a.y,
+                                    b.x,
+                                    b.y,
+                                    c.x,
+                                    c.y,
+                                    fill,
+                                    &clip_stack,
+                                );
+                            }
+                        } else |_| {
+                            // invalid or degenerate curve fill; skip it
+                        }
+                    }
+                }
+
+                if (cubic_cmd.stroke) |stroke| {
+                    if (points.items.len >= 2) {
+                        var i: usize = 0;
+                        while (i + 1 < points.items.len) : (i += 1) {
+                            const a = points.items[i];
+                            const b = points.items[i + 1];
+
+                            drawLine(
+                                a.x,
+                                a.y,
+                                b.x,
+                                b.y,
+                                stroke,
+                                stroke.width,
+                                &clip_stack,
+                                engine,
+                            );
+                        }
+                    }
+                }
+
+                if (dirtyRectFromPoints(points.items)) |bounds| {
+                    const padding: i32 = if (cubic_cmd.stroke) |stroke| @as(i32, stroke.width) else 0;
+                    engine.scene.markDirty(allocator, expandDirtyRect(bounds, padding));
                 }
             },
             .circle => |circle_cmd| {
@@ -1601,9 +1946,24 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                     circle_cmd.stroke,
                     &clip_stack,
                 );
+
+                if (dirtyRectFromPoints(&.{
+                    Point{ .x = @as(Coord, @intCast(@as(i32, @intFromFloat(@round(center.x))) - radius)), .y = @as(Coord, @intCast(@as(i32, @intFromFloat(@round(center.y))) - radius)) },
+                    Point{ .x = @as(Coord, @intCast(@as(i32, @intFromFloat(@round(center.x))) + radius)), .y = @as(Coord, @intCast(@as(i32, @intFromFloat(@round(center.y))) + radius)) },
+                })) |bounds| {
+                    const padding: i32 = if (circle_cmd.stroke) |stroke| @as(i32, stroke.width) else 0;
+                    engine.scene.markDirty(allocator, expandDirtyRect(bounds, padding));
+                }
             },
             .blit => |blit_cmd| {
                 blitRectRegion(engine, blit_cmd.src_pos, blit_cmd.dst_pos, blit_cmd.size, blit_cmd.mode, &clip_stack);
+
+                engine.scene.markDirty(allocator, .{
+                    .x = blit_cmd.dst_pos.x,
+                    .y = blit_cmd.dst_pos.y,
+                    .width = blit_cmd.size.width,
+                    .height = blit_cmd.size.height,
+                });
             },
             .bitmap => |bitmap_cmd| {
                 if (bitmap_cmd.width == 0 or bitmap_cmd.height == 0) continue;
@@ -1668,6 +2028,8 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                         applyBitmapMode(engine, x, y, bit_set, bitmap_cmd.mode, &clip_stack);
                     }
                 }
+
+                engine.scene.markDirty(allocator, bounds);
             },
             .text => |text_cmd| {
                 const m = currentMatrix(&stack);
@@ -1709,7 +2071,7 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
 
                 const stride: usize = @intCast(meta.stride_bytes);
                 const glyph_size = stride * @as(usize, @intCast(meta.height));
-                const bitmap_all = engine.scene.bitmap_arena.items;
+                const bitmap_all = engine.scene.font_bitmap_arena.items;
 
                 var cursor_x: i32 = start_x;
                 for (txt) |b| {
@@ -1746,11 +2108,20 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
 
                     cursor_x += width_i32;
                 }
+
+                engine.scene.markDirty(allocator, .{
+                    .x = @intCast(start_x),
+                    .y = @intCast(base_y),
+                    .width = @intCast(@max(total_w, 0)),
+                    .height = @intCast(@max(height_i32, 0)),
+                });
             },
             .invert => |invert_cmd| {
                 const m = currentMatrix(&stack);
                 const rect = transformRectToBounds(invert_cmd.rect, m);
                 invertRectRegion(engine, rect, &clip_stack);
+
+                engine.scene.markDirty(allocator, rect);
             },
             .rounded_rect => |rounded_rect_cmd| {
                 drawRoundedRect(
@@ -1762,6 +2133,8 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                     currentMatrix(&stack),
                     &clip_stack,
                 );
+
+                engine.scene.markDirty(allocator, rounded_rect_cmd.rect);
             },
             .ellipse => |ellipse_cmd| {
                 const m = currentMatrix(&stack);
@@ -1858,6 +2231,8 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                         }
                     }
                 }
+
+                engine.scene.markDirty(allocator, bounds);
             },
             .polygon => |polygon_cmd| {
                 if (polygon_cmd.points_len == 0) continue;
@@ -1932,6 +2307,11 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                         }
                     }
                 }
+
+                if (dirtyRectFromPoints(transformed_points)) |bounds| {
+                    const padding: i32 = if (polygon_cmd.stroke) |stroke| @as(i32, stroke.width) else 0;
+                    engine.scene.markDirty(allocator, expandDirtyRect(bounds, padding));
+                }
             },
             .polyline => |polyline_cmd| {
                 if (polyline_cmd.points_len < 2) continue;
@@ -1975,6 +2355,10 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                         );
                     }
                 }
+
+                if (dirtyRectFromPoints(transformed_points)) |bounds| {
+                    engine.scene.markDirty(allocator, expandDirtyRect(bounds, @as(i32, polyline_cmd.stroke.width)));
+                }
             },
             .arc => |arc_cmd| {
                 const m = currentMatrix(&stack);
@@ -1986,6 +2370,8 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
 
                 const start_angle = @as(f64, arc_cmd.start_angle);
                 const end_angle = @as(f64, arc_cmd.end_angle);
+
+                const radius_f: f32 = @floatFromInt(arc_cmd.radius);
 
                 const two_pi = std.math.pi * 2.0;
                 var span: f64 = end_angle - start_angle;
@@ -2007,8 +2393,8 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                     const sa = @as(f32, std.math.sin(angle));
 
                     const world: Vec2 = .{
-                        .x = center_world.x + ca * x_vec.x + sa * y_vec.x,
-                        .y = center_world.y + ca * x_vec.y + sa * y_vec.y,
+                        .x = center_world.x + ca * (x_vec.x * radius_f) + sa * (y_vec.x * radius_f),
+                        .y = center_world.y + ca * (x_vec.y * radius_f) + sa * (y_vec.y * radius_f),
                     };
 
                     points[i] = toPoint(world);
@@ -2053,6 +2439,11 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                         );
                     }
                 }
+
+                if (dirtyRectFromPoints(points)) |bounds| {
+                    const padding: i32 = if (arc_cmd.stroke) |stroke| @as(i32, stroke.width) else 0;
+                    engine.scene.markDirty(allocator, expandDirtyRect(bounds, padding));
+                }
             },
             .point => |point_cmd| {
                 const m = currentMatrix(&stack);
@@ -2065,6 +2456,13 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                     point_cmd.color,
                     &clip_stack,
                 );
+
+                engine.scene.markDirty(allocator, .{
+                    .x = @intCast(@as(i32, @intFromFloat(p.x))),
+                    .y = @intCast(@as(i32, @intFromFloat(p.y))),
+                    .width = 1,
+                    .height = 1,
+                });
             },
         }
     }
