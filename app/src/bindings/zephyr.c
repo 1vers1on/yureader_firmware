@@ -35,3 +35,7 @@ export int64_t zig_k_uptime_get(void) {
 export uint32_t zig_k_cycle_get_32(void) {
     return k_cycle_get_32();
 }
+
+export void *zig_k_aligned_alloc(size_t alignment, size_t size) {
+    return k_aligned_alloc(alignment, size);
+}

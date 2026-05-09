@@ -3,9 +3,9 @@
 /// API and a `Renderer` wrapper for creating frames, submitting draw
 /// commands, and managing common rendering state.
 const std = @import("std");
-const Render = @import("renderer");
+const Render = @import("renderer.zig");
 const Matrix3 = @import("util/Matrix3.zig").Matrix3;
-const Display = @import("hardware/display.zig");
+const display_module = @import("hardware/display.zig");
 
 /// Presentation mode for how the frame should be presented to the
 /// framebuffer.
@@ -95,7 +95,7 @@ pub const Canvas = struct {
     }
 
     /// Convenience: set a stroke with `color` and `width`.
-    pub fn strokeColor(self: *Canvas, color: Render.Color, width: f32) *Canvas {
+    pub fn strokeColor(self: *Canvas, color: Render.Color, width: u8) *Canvas {
         self.current_stroke = .{ .color = color, .width = width };
         return self;
     }
@@ -189,12 +189,12 @@ pub const Canvas = struct {
 
     /// Convenience: draw a filled rectangle at `(x,y)` with size `(w,h)`.
     pub fn rectFilled(self: *Canvas, x: i32, y: i32, w: i32, h: i32) !void {
-        try self.submit(.{ .rect = .{ .rect = .{ .x = x, .y = y, .width = w, .height = h }, .fill = self.current_fill, .stroke = null } });
+        try self.submit(.{ .rect = .{ .rect = .{ .x = @intCast(x), .y = @intCast(y), .width = @intCast(w), .height = @intCast(h) }, .fill = self.current_fill, .stroke = null } });
     }
 
     /// Convenience: draw a rectangle outline at `(x,y)` with size `(w,h)`.
     pub fn rectOutline(self: *Canvas, x: i32, y: i32, w: i32, h: i32) !void {
-        try self.submit(.{ .rect = .{ .rect = .{ .x = x, .y = y, .width = w, .height = h }, .fill = null, .stroke = self.current_stroke } });
+        try self.submit(.{ .rect = .{ .rect = .{ .x = @intCast(x), .y = @intCast(y), .width = @intCast(w), .height = @intCast(h) }, .fill = null, .stroke = self.current_stroke } });
     }
 
     /// Draw a triangle with explicit `fill` and `stroke`.
@@ -219,12 +219,12 @@ pub const Canvas = struct {
 
     /// Convenience: draw a filled circle at `(cx, cy)` with radius `r`.
     pub fn circleFilled(self: *Canvas, cx: i32, cy: i32, r: Render.Dim) !void {
-        try self.submit(.{ .circle = .{ .center = .{ .x = cx, .y = cy }, .radius = r, .fill = self.current_fill, .stroke = null } });
+        try self.submit(.{ .circle = .{ .center = .{ .x = @intCast(cx), .y = @intCast(cy) }, .radius = r, .fill = self.current_fill, .stroke = null } });
     }
 
     /// Convenience: draw a circle outline at `(cx, cy)` with radius `r`.
     pub fn circleOutline(self: *Canvas, cx: i32, cy: i32, r: Render.Dim) !void {
-        try self.submit(.{ .circle = .{ .center = .{ .x = cx, .y = cy }, .radius = r, .fill = null, .stroke = self.current_stroke } });
+        try self.submit(.{ .circle = .{ .center = .{ .x = @intCast(cx), .y = @intCast(cy) }, .radius = r, .fill = null, .stroke = self.current_stroke } });
     }
 
     /// Draw an ellipse inscribed in `shape_rect`.
@@ -286,7 +286,7 @@ pub const Canvas = struct {
 
     /// Draw a single pixel at `(x,y)` using the current text color.
     pub fn pointAt(self: *Canvas, x: i32, y: i32) !void {
-        try self.submit(.{ .point = .{ .point = .{ .x = x, .y = y }, .color = self.current_text_color } });
+        try self.submit(.{ .point = .{ .point = .{ .x = @intCast(x), .y = @intCast(y) }, .color = self.current_text_color } });
     }
 
     /// Draw `contents` at `pos` using `font` and explicit color/alignment.
@@ -338,7 +338,7 @@ pub const Canvas = struct {
 
     /// Convenience: draw text at `(x,y)`.
     pub fn textXY(self: *Canvas, x: i32, y: i32, font: Render.FontId, contents: []const u8) !void {
-        try self.textAt(.{ .x = x, .y = y }, font, contents);
+        try self.textAt(.{ .x = @intCast(x), .y = @intCast(y) }, font, contents);
     }
 
     /// Upload bitmap `data` and enqueue a bitmap draw at `pos`.
@@ -367,7 +367,7 @@ pub const Canvas = struct {
 
     /// Convenience: upload and draw a bitmap at `(x,y)`.
     pub fn bitmapXY(self: *Canvas, x: i32, y: i32, width: Render.Dim, height: Render.Dim, data: []const u8, stride_bytes: u16, bit_order: Render.BitmapBitOrder, mode: Render.BitmapMode) !void {
-        try self.bitmap(.{ .x = x, .y = y }, width, height, data, stride_bytes, bit_order, mode);
+        try self.bitmap(.{ .x = @intCast(x), .y = @intCast(y) }, width, height, data, stride_bytes, bit_order, mode);
     }
 
     /// Enqueue a blit operation from `src_pos` to `dst_pos` with `size`.
@@ -382,7 +382,7 @@ pub const Canvas = struct {
 
     /// Invert colors in rectangle `(x,y,w,h)`.
     pub fn invertXYWH(self: *Canvas, x: i32, y: i32, w: i32, h: i32) !void {
-        try self.submit(.{ .invert = .{ .rect = .{ .x = x, .y = y, .width = w, .height = h } } });
+        try self.submit(.{ .invert = .{ .rect = .{ .x = @intCast(x), .y = @intCast(y), .width = @intCast(w), .height = @intCast(h) } } });
     }
 
     /// Push a clipping rectangle on the canvas clip stack.
@@ -392,7 +392,7 @@ pub const Canvas = struct {
 
     /// Push a clipping rectangle `(x,y,w,h)`.
     pub fn clipPushXYWH(self: *Canvas, x: i32, y: i32, w: i32, h: i32) !void {
-        try self.submit(.{ .clip = .{ .push = .{ .x = x, .y = y, .width = w, .height = h } } });
+        try self.submit(.{ .clip = .{ .push = .{ .x = @intCast(x), .y = @intCast(y), .width = @intCast(w), .height = @intCast(h) } } });
     }
 
     /// Pop the most recent clipping rectangle.
@@ -508,9 +508,10 @@ pub const Renderer = struct {
     /// Helper: perform a full write of the framebuffer.
     fn doFullWrite(self: *Renderer) !void {
         const fb = &self.engine.fb;
-        try Display.set_mono01();
+        const disp = display_module.get_display();
+        try disp.set_mono01();
         const pitch_bytes: usize = (@as(usize, fb.width) + 7) / 8;
-        try Display.write(0, 0, @as(u16, fb.width), @as(u16, fb.height), @as(u16, pitch_bytes), fb.pixels.ptr, fb.pixels.len);
+        try disp.write(0, 0, @as(u16, fb.width), @as(u16, fb.height), @as(u16, @intCast(pitch_bytes)), fb.pixels.ptr, fb.pixels.len);
     }
 
     /// Helper: write a rectangular region (copies bits into a temporary byte buffer).
@@ -521,26 +522,27 @@ pub const Renderer = struct {
         const rows = @as(usize, clipped.height);
         const buf_size = dst_row_bytes * rows;
         var buf = try self.allocator.alloc(u8, buf_size);
-        std.mem.set(u8, buf, 0);
+        @memset(buf, 0);
         defer self.allocator.free(buf);
 
         var r: usize = 0;
         while (r < rows) : (r += 1) {
-            const y: Render.Dim = @intCast(@as(i32, clipped.y) + @as(i32, r));
+            const y: Render.Dim = @intCast(@as(i32, clipped.y) + @as(i32, @intCast(r)));
             var c: usize = 0;
             while (c < @as(usize, clipped.width)) : (c += 1) {
-                const x: Render.Dim = @intCast(@as(i32, clipped.x) + @as(i32, c));
+                const x: Render.Dim = @intCast(@as(i32, clipped.x) + @as(i32, @intCast(c)));
                 const col = fb.getPixel(x, y);
                 if (col == Render.Color.black) {
                     const byte_idx = r * dst_row_bytes + (c / 8);
                     const bit = 7 - (c % 8);
-                    buf[byte_idx] |= @as(u8, 1) << @as(u8, bit);
+                    buf[byte_idx] |= @as(u8, 1) << @as(u3, @intCast(bit));
                 }
             }
         }
 
-        try Display.set_mono01();
-        try Display.write(@as(u16, clipped.x), @as(u16, clipped.y), @as(u16, clipped.width), @as(u16, clipped.height), @as(u16, dst_row_bytes), buf.ptr, buf_size);
+        const disp = display_module.get_display();
+        try disp.set_mono01();
+        try disp.write(@intCast(clipped.x), @intCast(clipped.y), @intCast(clipped.width), @intCast(clipped.height), @as(u16, @intCast(dst_row_bytes)), buf.ptr, buf_size);
     }
 
     /// Render the current scene and present it to the display.

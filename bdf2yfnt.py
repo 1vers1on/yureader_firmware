@@ -3,17 +3,18 @@
 Simple BDF -> YFNT converter.
 YFNT header (little-endian):
 4 bytes: 'YFNT'
-1 byte: version (1)
+1 byte: version (2)
 1 byte: reserved
 2 bytes: width (u16 LE)
 2 bytes: height (u16 LE)
-4 bytes: first_codepoint (u32 LE)
 2 bytes: glyph_count (u16 LE)
 2 bytes: stride_bytes (u16 LE) (0 means auto)
-followed by glyph_count * (stride_bytes * height) bytes of bitmap data (MSB-first per row)
+followed by glyph_count records:
+4 bytes: codepoint (u32 LE)
+stride_bytes * height bytes: bitmap data (MSB-first per row)
 
 This script expects a reasonably standard BDF with BITMAP rows of hex per glyph.
-It emits fixed-width glyphs using the font bounding box.
+It emits only the glyphs that are actually encoded in the BDF.
 """
 import argparse
 import struct
@@ -63,6 +64,15 @@ def parse_bdf(path):
     return bbx, glyphs
 
 
+def normalize_rows(rows, height):
+    if len(rows) < height:
+        pad_top = height - len(rows)
+        return (["0"] * pad_top) + rows
+    if len(rows) > height:
+        return rows[-height:]
+    return rows
+
+
 def pack_glyph_rows(rows, width, stride_bytes):
     # rows: list of hex strings (without 0x), top-to-bottom
     out = bytearray()
@@ -95,8 +105,8 @@ def main():
     p = argparse.ArgumentParser(description="Convert BDF to YFNT binary")
     p.add_argument("bdf")
     p.add_argument("out")
-    p.add_argument("--first", type=int, default=32)
-    p.add_argument("--last", type=int, default=126)
+    p.add_argument("--first", type=int, default=None, help="optional lower codepoint filter")
+    p.add_argument("--last", type=int, default=None, help="optional upper codepoint filter")
     args = p.parse_args()
 
     bbx, glyphs = parse_bdf(args.bdf)
@@ -104,36 +114,36 @@ def main():
         raise SystemExit("BDF missing FONTBOUNDINGBOX")
     width, height, xoff, yoff = bbx
 
-    first = args.first
-    last = args.last
-    glyph_count = last - first + 1
+    glyph_items = []
+    for code, rows in glyphs.items():
+        if code is None or code < 0:
+            continue
+        if args.first is not None and code < args.first:
+            continue
+        if args.last is not None and code > args.last:
+            continue
+        glyph_items.append((code, normalize_rows(rows, height)))
+
+    glyph_items.sort(key=lambda item: item[0])
+    glyph_count = len(glyph_items)
+    if glyph_count == 0:
+        raise SystemExit("BDF has no encodable glyphs in the selected range")
 
     stride = (width + 7) // 8
 
     payload = bytearray()
-    for code in range(first, last + 1):
-        rows = glyphs.get(code, None)
-        if rows is None:
-            # blank rows
-            rows = ["0"] * height
-        # BDF rows may be fewer/greater than bbx height; normalize top/bottom
-        if len(rows) < height:
-            # pad top with zeros so baseline aligns roughly
-            pad_top = height - len(rows)
-            rows = (["0"] * pad_top) + rows
-        elif len(rows) > height:
-            rows = rows[-height:]
+    for code, rows in glyph_items:
+        payload.extend(struct.pack("<I", code))
         packed = pack_glyph_rows(rows, width, stride)
         payload.extend(packed)
 
     # header
     header = bytearray()
     header.extend(b"YFNT")
-    header.append(1)  # version
+    header.append(2)  # version
     header.append(0)  # reserved
     header.extend(struct.pack("<H", width))
     header.extend(struct.pack("<H", height))
-    header.extend(struct.pack("<I", first))
     header.extend(struct.pack("<H", glyph_count))
     header.extend(struct.pack("<H", stride))
 

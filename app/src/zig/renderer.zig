@@ -133,6 +133,7 @@ pub const TextCmd = struct {
 };
 
 pub const FontMeta = struct {
+    format_version: u8,
     width: u16,
     height: u16,
     first_codepoint: u32,
@@ -552,7 +553,7 @@ pub fn drawLine(x0: Coord, y0: Coord, x1: Coord, y1: Coord, stroke: Stroke, widt
     const sx: i32 = if (x0_i32 < x1_i32) 1 else -1;
     const sy: i32 = if (y0_i32 < y1_i32) 1 else -1;
 
-    var err: i32 = if (dx > dy) dx / 2 else -dy / 2;
+    var err: i32 = if (dx > dy) @divFloor(dx, 2) else -@divFloor(dy, 2);
     var step: usize = 0;
 
     var x: i32 = x0_i32;
@@ -722,10 +723,11 @@ fn bitmapBit(data: []const u8, stride_bytes: usize, x: usize, y: usize, bit_orde
 }
 
 pub fn registerFont(scene: *Scene, allocator: std.mem.Allocator, font_data: []const u8) !FontId {
-    const header_size: usize = 18;
-    if (font_data.len < header_size) return error.InvalidFont;
+    if (font_data.len < 14) return error.InvalidFont;
 
     if (!std.mem.eql(u8, font_data[0..4], "YFNT")) return error.InvalidFont;
+
+    const version = font_data[4];
 
     const width: u16 =
         @as(u16, font_data[6]) |
@@ -735,20 +737,15 @@ pub fn registerFont(scene: *Scene, allocator: std.mem.Allocator, font_data: []co
         @as(u16, font_data[8]) |
         (@as(u16, font_data[9]) << 8);
 
-    const first: u32 =
-        @as(u32, font_data[10]) |
-        (@as(u32, font_data[11]) << 8) |
-        (@as(u32, font_data[12]) << 16) |
-        (@as(u32, font_data[13]) << 24);
-
     const glyph_count: u16 =
-        @as(u16, font_data[14]) |
-        (@as(u16, font_data[15]) << 8);
+        @as(u16, font_data[10]) |
+        (@as(u16, font_data[11]) << 8);
 
     var stride_bytes: u16 =
-        @as(u16, font_data[16]) |
-        (@as(u16, font_data[17]) << 8);
+        @as(u16, font_data[12]) |
+        (@as(u16, font_data[13]) << 8);
 
+    if (version != 1 and version != 2) return error.InvalidFont;
     if (width == 0 or height == 0 or glyph_count == 0) return error.InvalidFont;
 
     if (stride_bytes == 0) {
@@ -756,7 +753,9 @@ pub fn registerFont(scene: *Scene, allocator: std.mem.Allocator, font_data: []co
     }
 
     const glyph_size: usize = @as(usize, stride_bytes) * @as(usize, height);
-    const data_len: usize = @as(usize, glyph_count) * glyph_size;
+    const record_size: usize = if (version == 2) 4 + glyph_size else glyph_size;
+    const data_len: usize = try std.math.mul(usize, @as(usize, glyph_count), record_size);
+    const header_size: usize = if (version == 2) 14 else 18;
 
     if (font_data.len < header_size + data_len) return error.InvalidFont;
 
@@ -768,9 +767,13 @@ pub fn registerFont(scene: *Scene, allocator: std.mem.Allocator, font_data: []co
     );
 
     const meta: FontMeta = .{
+        .format_version = version,
         .width = width,
         .height = height,
-        .first_codepoint = first,
+        .first_codepoint = if (version == 1) (@as(u32, font_data[10]) |
+            (@as(u32, font_data[11]) << 8) |
+            (@as(u32, font_data[12]) << 16) |
+            (@as(u32, font_data[13]) << 24)) else 0,
         .glyph_count = glyph_count,
         .stride_bytes = stride_bytes,
         .data_offset = data_offset,
@@ -784,6 +787,40 @@ fn getFontMeta(scene: *Scene, id: FontId) ?*FontMeta {
     const idx: usize = @intCast(id);
     if (idx >= scene.fonts.items.len) return null;
     return &scene.fonts.items[idx];
+}
+
+fn findFontGlyph(scene: *const Scene, meta: FontMeta, code: u32) ?[]const u8 {
+    const stride: usize = @intCast(meta.stride_bytes);
+    const glyph_size = stride * @as(usize, meta.height);
+    const bitmap_all = scene.font_bitmap_arena.items;
+
+    if (meta.format_version == 1) {
+        if (code < meta.first_codepoint) return null;
+
+        const glyph_index: usize = @intCast(code - meta.first_codepoint);
+        if (glyph_index >= @as(usize, @intCast(meta.glyph_count))) return null;
+
+        const glyph_offset_bytes: usize = @as(usize, @intCast(meta.data_offset)) + glyph_index * glyph_size;
+        if (glyph_offset_bytes + glyph_size > bitmap_all.len) return null;
+
+        return bitmap_all[glyph_offset_bytes .. glyph_offset_bytes + glyph_size];
+    }
+
+    if (meta.format_version != 2) return null;
+
+    const record_size = 4 + glyph_size;
+    const base_offset: usize = @as(usize, @intCast(meta.data_offset));
+    var glyph_index: usize = 0;
+    while (glyph_index < @as(usize, @intCast(meta.glyph_count))) : (glyph_index += 1) {
+        const record_offset = base_offset + glyph_index * record_size;
+        if (record_offset + record_size > bitmap_all.len) return null;
+
+        const record = bitmap_all[record_offset .. record_offset + record_size];
+        const record_code = std.mem.readInt(u32, record[0..4], .little);
+        if (record_code == code) return record[4..];
+    }
+
+    return null;
 }
 
 fn applyBitmapMode(engine: *Engine, x: i32, y: i32, bit_set: bool, mode: BitmapMode, clip_stack: *std.ArrayListUnmanaged(Rect)) void {
@@ -902,8 +939,8 @@ fn angleLess(center: Point, a: Point, b: Point) bool {
 
 fn orderQuadrilateralPoints(quad: Quad) Quad {
     const center = Point{
-        .x = @intCast((@as(i32, quad.a.x) + @as(i32, quad.b.x) + @as(i32, quad.c.x) + @as(i32, quad.d.x)) / 4),
-        .y = @intCast((@as(i32, quad.a.y) + @as(i32, quad.b.y) + @as(i32, quad.c.y) + @as(i32, quad.d.y)) / 4),
+        .x = @intCast(@divFloor(@as(i32, quad.a.x) + @as(i32, quad.b.x) + @as(i32, quad.c.x) + @as(i32, quad.d.x), 4)),
+        .y = @intCast(@divFloor(@as(i32, quad.a.y) + @as(i32, quad.b.y) + @as(i32, quad.c.y) + @as(i32, quad.d.y), 4)),
     };
 
     var points = [4]Point{ quad.a, quad.b, quad.c, quad.d };
@@ -928,20 +965,20 @@ fn orderQuadrilateralPoints(quad: Quad) Quad {
 }
 
 fn transformRectToBounds(rect: Rect, matrix: Matrix3) Rect {
-    const points = .{
+    const points_array: [4]Point = .{
         Point{ .x = rect.x, .y = rect.y },
         Point{ .x = rect.x + @as(Coord, @intCast(rect.width)), .y = rect.y },
         Point{ .x = rect.x + @as(Coord, @intCast(rect.width)), .y = rect.y + @as(Coord, @intCast(rect.height)) },
         Point{ .x = rect.x, .y = rect.y + @as(Coord, @intCast(rect.height)) },
     };
-
-    const p0 = matrix.transformPoint(toVec2(points[0]));
+    const p0 = matrix.transformPoint(toVec2(points_array[0]));
     var min_x = p0.x;
     var max_x = p0.x;
     var min_y = p0.y;
     var max_y = p0.y;
 
-    for (points[1..]) |point| {
+    for (1..4) |i| {
+        const point = points_array[i];
         const p = matrix.transformPoint(toVec2(point));
         if (p.x < min_x) min_x = p.x;
         if (p.x > max_x) max_x = p.x;
@@ -1737,16 +1774,23 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                 const m = currentMatrix(&stack);
 
                 const r = rect_cmd.rect;
-                const points = .{
+                const points_tuple = .{
                     Point{ .x = r.x, .y = r.y },
                     Point{ .x = r.x + @as(Coord, @intCast(r.width)), .y = r.y },
                     Point{ .x = r.x + @as(Coord, @intCast(r.width)), .y = r.y + @as(Coord, @intCast(r.height)) },
                     Point{ .x = r.x, .y = r.y + @as(Coord, @intCast(r.height)) },
                 };
 
+                const points_array: [4]Point = .{
+                    points_tuple[0],
+                    points_tuple[1],
+                    points_tuple[2],
+                    points_tuple[3],
+                };
+
                 var transformed_points: [4]Point = undefined;
-                for (0..points.len) |i| {
-                    const point = points[i];
+                for (0..4) |i| {
+                    const point = points_array[i];
                     transformed_points[i] = toPoint(m.transformPoint(toVec2(point)));
                 }
 
@@ -1757,12 +1801,12 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                     .d = transformed_points[3],
                 });
 
-                if (rect_cmd.fill) {
+                if (rect_cmd.fill != null) {
                     drawFilledTriangle(engine, quad.a.x, quad.a.y, quad.b.x, quad.b.y, quad.c.x, quad.c.y, rect_cmd.fill.?, &clip_stack);
                     drawFilledTriangle(engine, quad.a.x, quad.a.y, quad.c.x, quad.c.y, quad.d.x, quad.d.y, rect_cmd.fill.?, &clip_stack);
                 }
 
-                if (rect_cmd.stroke) {
+                if (rect_cmd.stroke != null) {
                     const stroke = rect_cmd.stroke.?;
                     drawLine(quad.a.x, quad.a.y, quad.b.x, quad.b.y, stroke, stroke.width, &clip_stack, engine);
                     drawLine(quad.b.x, quad.b.y, quad.c.x, quad.c.y, stroke, stroke.width, &clip_stack, engine);
@@ -1781,11 +1825,11 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                 const b = toPoint(m.transformPoint(toVec2(triangle_cmd.b)));
                 const c = toPoint(m.transformPoint(toVec2(triangle_cmd.c)));
 
-                if (triangle_cmd.fill) {
+                if (triangle_cmd.fill != null) {
                     drawFilledTriangle(engine, a.x, a.y, b.x, b.y, c.x, c.y, triangle_cmd.fill.?, &clip_stack);
                 }
 
-                if (triangle_cmd.stroke) {
+                if (triangle_cmd.stroke != null) {
                     const stroke = triangle_cmd.stroke.?;
                     drawLine(a.x, a.y, b.x, b.y, stroke, stroke.width, &clip_stack, engine);
                     drawLine(b.x, b.y, c.x, c.y, stroke, stroke.width, &clip_stack, engine);
@@ -1971,7 +2015,7 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                 const data = engine.scene.bitmap_arena.items;
                 if (bitmap_cmd.data_offset >= data.len) continue;
 
-                const data_end = std.math.min(@as(usize, bitmap_cmd.data_offset) + @as(usize, bitmap_cmd.data_len), data.len);
+                const data_end = @min(@as(usize, bitmap_cmd.data_offset) + @as(usize, bitmap_cmd.data_len), data.len);
                 if (data_end <= bitmap_cmd.data_offset) continue;
 
                 const bitmap_data = data[bitmap_cmd.data_offset..data_end];
@@ -2036,7 +2080,7 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
 
                 const meta_ptr = getFontMeta(&engine.scene, text_cmd.font);
                 if (meta_ptr == null) continue;
-                const meta = meta_ptr.*;
+                const meta = meta_ptr.?.*;
 
                 const text_arena = engine.scene.text_arena.items;
                 const start_off: usize = @intCast(text_cmd.text_offset);
@@ -2048,7 +2092,7 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
 
                 const width_i32: i32 = @as(i32, meta.width);
                 const height_i32: i32 = @as(i32, meta.height);
-                const total_w: i32 = width_i32 * @as(i32, txt.len);
+                const total_w: i32 = width_i32 * @as(i32, @intCast(txt.len));
 
                 const origin = m.transformPoint(toVec2(text_cmd.pos));
                 const ox: i32 = @intFromFloat(@round(origin.x));
@@ -2057,51 +2101,33 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                 var start_x: i32 = ox;
                 switch (text_cmd.textAlign) {
                     .left => start_x = ox,
-                    .center => start_x = ox - (total_w / 2),
+                    .center => start_x = ox - @divFloor(total_w, 2),
                     .right => start_x = ox - total_w,
                 }
 
                 var base_y: i32 = oy;
                 switch (text_cmd.baseline) {
                     .top => base_y = oy,
-                    .middle => base_y = oy - (height_i32 / 2),
+                    .middle => base_y = oy - @divFloor(height_i32, 2),
                     .bottom => base_y = oy - height_i32,
-                    .alphabetic => base_y = oy - height_i32 + (height_i32 / 4),
+                    .alphabetic => base_y = oy - height_i32 + @divFloor(height_i32, 4),
                 }
-
-                const stride: usize = @intCast(meta.stride_bytes);
-                const glyph_size = stride * @as(usize, @intCast(meta.height));
-                const bitmap_all = engine.scene.font_bitmap_arena.items;
 
                 var cursor_x: i32 = start_x;
                 for (txt) |b| {
                     const code: u32 = @intCast(b);
-                    if (code < meta.first_codepoint) {
+                    const glyph_data = findFontGlyph(&engine.scene, meta, code) orelse {
                         cursor_x += width_i32;
                         continue;
-                    }
-
-                    const glyph_index: usize = @intCast(code - meta.first_codepoint);
-                    if (glyph_index >= @as(usize, @intCast(meta.glyph_count))) {
-                        cursor_x += width_i32;
-                        continue;
-                    }
-
-                    const glyph_offset_bytes: usize = @as(usize, @intCast(meta.data_offset)) + glyph_index * glyph_size;
-                    if (glyph_offset_bytes + glyph_size > bitmap_all.len) {
-                        cursor_x += width_i32;
-                        continue;
-                    }
-
-                    const glyph_data = bitmap_all[glyph_offset_bytes .. glyph_offset_bytes + glyph_size];
+                    };
 
                     var gy: usize = 0;
                     while (gy < @as(usize, @intCast(meta.height))) : (gy += 1) {
                         var gx: usize = 0;
                         while (gx < @as(usize, @intCast(meta.width))) : (gx += 1) {
-                            const bit = bitmapBit(glyph_data, stride, gx, gy, .msb_first) orelse false;
+                            const bit = bitmapBit(glyph_data, @intCast(meta.stride_bytes), gx, gy, .msb_first) orelse false;
                             if (bit) {
-                                putPixelClipSigned(engine, cursor_x + @as(i32, gx), base_y + @as(i32, gy), text_cmd.color, &clip_stack);
+                                putPixelClipSigned(engine, cursor_x + @as(i32, @intCast(gx)), base_y + @as(i32, @intCast(gy)), text_cmd.color, &clip_stack);
                             }
                         }
                     }
@@ -2378,7 +2404,7 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                 if (span <= 0.0) span += two_pi;
 
                 const segments_f = span * 16.0; // 16 segments per radian
-                var segments = @as(usize, @intCast(@as(f64, @intFromFloat(@ceil(segments_f)))));
+                var segments = @as(usize, @intFromFloat(@ceil(segments_f)));
                 if (segments < 4) segments = 4;
 
                 var points = allocator.alloc(Point, segments + 1) catch continue;
@@ -2386,11 +2412,12 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
 
                 var i: usize = 0;
                 while (i <= segments) : (i += 1) {
-                    const t = @as(f64, i) / @as(f64, segments);
+                    const t = @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(segments));
                     const angle = start_angle + t * span;
 
-                    const ca = @as(f32, std.math.cos(angle));
-                    const sa = @as(f32, std.math.sin(angle));
+                    const angle_f32 = @as(f32, @floatCast(angle));
+                    const ca = @as(f32, std.math.cos(angle_f32));
+                    const sa = @as(f32, std.math.sin(angle_f32));
 
                     const world: Vec2 = .{
                         .x = center_world.x + ca * (x_vec.x * radius_f) + sa * (y_vec.x * radius_f),
