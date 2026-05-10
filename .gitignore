@@ -59,6 +59,7 @@ env/
 *.swo
 *~
 .cache
+app/src/desktop-demo-output/
 
 # os junk
 .DS_Store

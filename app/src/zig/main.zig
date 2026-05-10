@@ -5,6 +5,8 @@ const logger = @import("logger.zig");
 const gfx = @import("gfx.zig");
 const font = @import("font.zig");
 const Matrix3 = @import("util/Matrix3.zig").Matrix3;
+const buttons = @import("hardware/buttons.zig");
+const Framebuffer = @import("renderer.zig").Framebuffer;
 
 const log = logger.Logger(.{
     .module_name = "main",
@@ -38,16 +40,16 @@ const demo_bitmap_b = [_]u8{
 };
 
 fn sd_card_inserted_callback() void {
-    log.info("SD card inserted callback triggered.", .{});
-    sd.mount() catch {
-        log.err("Failed to mount SD card during insertion.", .{});
+    log.info("SD card inserted.", .{});
+    sd.mount() catch |err| {
+        log.err("Failed to mount SD card: {}", .{err});
     };
 }
 
 fn sd_card_removed_callback() void {
-    log.info("SD card removed callback triggered.", .{});
-    sd.unmount() catch {
-        log.err("Failed to unmount SD card during removal.", .{});
+    log.info("SD card removed.", .{});
+    sd.unmount() catch |err| {
+        log.err("Failed to unmount SD card: {}", .{err});
     };
 }
 
@@ -55,7 +57,7 @@ fn presentAndReport(renderer: *gfx.Renderer, mode: ?gfx.PresentMode, label: []co
     try renderer.present(mode);
 
     const zones = renderer.dirtyZones();
-    log.info("{s}: {} dirty zones", .{ label, zones.len });
+    log.info("  {s}: {} dirty zones", .{ label, zones.len });
     renderer.clearDirtyZones();
 }
 
@@ -280,48 +282,53 @@ fn drawFinalFullPresent(renderer: *gfx.Renderer) !void {
 export fn zig_main() callconv(.c) void {
     log.info("Starting YuReader firmware...", .{});
 
-    log.info("Registering SD card callbacks...", .{});
+    log.info("Initializing SD card interface.", .{});
     sd.register_callbacks(
         &sd_card_inserted_callback,
         &sd_card_removed_callback,
     );
 
-    sd.init() catch {
-        log.err("Failed to initialize SD card interface.", .{});
+    sd.init() catch |err| {
+        log.err("SD card initialization failed: {}", .{err});
         return;
     };
 
     if (sd.card_present()) {
-        log.info("SD card is present.", .{});
-        log.info("Mounting SD card...", .{});
-        sd.mount() catch {
-            log.err("Failed to mount SD card.", .{});
+        log.info("SD card detected, mounting...", .{});
+        sd.mount() catch |err| {
+            log.err("SD card mount failed: {}", .{err});
             return;
         };
-        log.info("SD card mounted successfully.", .{});
+        log.info("SD card mounted.", .{});
     } else {
-        log.info("SD card is not present.", .{});
+        log.info("No SD card detected.", .{});
     }
 
+    log.info("Initializing buttons.", .{});
+    buttons.init() catch |err| {
+        log.err("Button initialization failed: {}", .{err});
+        return;
+    };
+    log.info("Buttons ready.", .{});
+
+    log.info("Initializing renderer ({}x{} framebuffer).", .{ framebuffer_width, framebuffer_height });
     var renderer = gfx.Renderer.init(z.allocator(), .{
         .clear_on_begin = .white,
         .default_present_mode = .auto,
-        .framebuffer = .{
-            .height = framebuffer_height,
-            .width = framebuffer_width,
-            .pixels = framebuffer_pixels[0..],
-        },
-    }) catch {
-        log.err("Failed to initialize renderer.", .{});
+        .framebuffer = Framebuffer.init(framebuffer_width, framebuffer_height, framebuffer_pixels[0..]),
+    }) catch |err| {
+        log.err("Renderer initialization failed: {}", .{err});
         return;
     };
 
-    const font_id = renderer.registerFont(font.getBlob()) catch {
-        log.err("Failed to register font with renderer.", .{});
+    const font_id = renderer.registerFont(font.getBlob()) catch |err| {
+        log.err("Font registration failed: {}", .{err});
         return;
     };
     defer renderer.deinit();
 
+    log.info("Running display demonstrations.", .{});
+    
     drawPrimitiveShowcase(&renderer, font_id) catch |err| {
         log.err("Primitive showcase failed: {}", .{err});
         return;
@@ -341,4 +348,6 @@ export fn zig_main() callconv(.c) void {
         log.err("Final present failed: {}", .{err});
         return;
     };
+    
+    log.info("Demonstrations completed successfully.", .{});
 }

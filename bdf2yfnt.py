@@ -74,30 +74,42 @@ def normalize_rows(rows, height):
 
 
 def pack_glyph_rows(rows, width, stride_bytes):
-    # rows: list of hex strings (without 0x), top-to-bottom
+    # rows: list of hex strings, top-to-bottom.
+    # bdf rows are stored msb-first and padded to whole hex/byte widths.
     out = bytearray()
-    bytes_per_row = stride_bytes
+
     for r in rows:
+        r = r.strip()
+
         if r == "":
             row_val = 0
+            src_bits = 0
         else:
             row_val = int(r, 16)
-        # row_val holds bits with MSB being leftmost; we need to emit bytes MSB-first
+            src_bits = len(r) * 4
+
         bits = []
+
         for bit in range(width):
-            shift = (width - 1 - bit)
-            b = (row_val >> shift) & 1
-            bits.append(b)
-        # pack into bytes
-        for byte_i in range(bytes_per_row):
+            # take pixels from the left side of the bdf row.
+            # example: width=6, row has 8 source bits -> read bits 7..2, not 5..0.
+            src_shift = src_bits - 1 - bit
+
+            if src_shift >= 0:
+                bits.append((row_val >> src_shift) & 1)
+            else:
+                bits.append(0)
+
+        for byte_i in range(stride_bytes):
             byte_val = 0
             for bit_in_byte in range(8):
                 bit_index = byte_i * 8 + bit_in_byte
                 if bit_index < len(bits):
                     byte_val = (byte_val << 1) | bits[bit_index]
                 else:
-                    byte_val = (byte_val << 1)
+                    byte_val <<= 1
             out.append(byte_val)
+
     return out
 
 

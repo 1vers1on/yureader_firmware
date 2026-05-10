@@ -480,6 +480,11 @@ pub const Renderer = struct {
         self.engine.scene.clearDirtyZones();
     }
 
+    /// Return the current framebuffer backing store.
+    pub fn framebuffer(self: *const Renderer) *const Render.Framebuffer {
+        return &self.engine.fb;
+    }
+
     /// Register a font from `data` and return a `FontId` for use with text
     /// draw calls.
     pub fn registerFont(self: *Renderer, data: []const u8) !Render.FontId {

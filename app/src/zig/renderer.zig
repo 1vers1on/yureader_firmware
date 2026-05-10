@@ -426,10 +426,20 @@ fn expandDirtyRect(rect: Rect, padding: i32) Rect {
 pub const Framebuffer = struct {
     width: Dim,
     height: Dim,
+    stride_bytes: usize,
     pixels: []u8,
 
+    pub fn init(width: Dim, height: Dim, pixels: []u8) Framebuffer {
+        return .{
+            .width = width,
+            .height = height,
+            .stride_bytes = (@as(usize, width) + 7) / 8,
+            .pixels = pixels,
+        };
+    }
+
     pub fn byteIndex(self: *const Framebuffer, x: Dim, y: Dim) usize {
-        return (y * self.width + x) / 8;
+        return @as(usize, y) * self.stride_bytes + @as(usize, x) / 8;
     }
 
     pub fn setPixel(self: *Framebuffer, x: Dim, y: Dim, color: Color) void {
@@ -2104,6 +2114,13 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                     .center => start_x = ox - @divFloor(total_w, 2),
                     .right => start_x = ox - total_w,
                 }
+                
+                // Check if text is completely off-screen
+                const text_end_x: i32 = start_x + total_w;
+                if (text_end_x <= 0 or start_x >= engine.fb.width) {
+                    // Text is completely off-screen, skip
+                    continue;
+                }
 
                 var base_y: i32 = oy;
                 switch (text_cmd.baseline) {
@@ -2115,15 +2132,29 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
 
                 var cursor_x: i32 = start_x;
                 for (txt) |b| {
+                    // Skip glyphs that are completely off-screen to the left
+                    if (cursor_x + width_i32 <= 0) {
+                        cursor_x += width_i32;
+                        continue;
+                    }
+                    
+                    // Skip glyphs that are completely off-screen to the right
+                    if (cursor_x >= engine.fb.width) {
+                        break;
+                    }
+
                     const code: u32 = @intCast(b);
                     const glyph_data = findFontGlyph(&engine.scene, meta, code) orelse {
                         cursor_x += width_i32;
                         continue;
                     };
 
+                    // Calculate starting offset if glyph is partially off-screen to the left
+                    const gx_start: usize = if (cursor_x < 0) @intCast(-cursor_x) else 0;
+                    
                     var gy: usize = 0;
                     while (gy < @as(usize, @intCast(meta.height))) : (gy += 1) {
-                        var gx: usize = 0;
+                        var gx: usize = gx_start;
                         while (gx < @as(usize, @intCast(meta.width))) : (gx += 1) {
                             const bit = bitmapBit(glyph_data, @intCast(meta.stride_bytes), gx, gy, .msb_first) orelse false;
                             if (bit) {
@@ -2135,10 +2166,13 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                     cursor_x += width_i32;
                 }
 
+                // Calculate actual dirty region
+                const dirty_x = @max(0, start_x);
+                const dirty_end_x = @min(engine.fb.width, start_x + total_w);
                 engine.scene.markDirty(allocator, .{
-                    .x = @intCast(start_x),
+                    .x = @intCast(dirty_x),
                     .y = @intCast(base_y),
-                    .width = @intCast(@max(total_w, 0)),
+                    .width = @intCast(@max(dirty_end_x - dirty_x, 0)),
                     .height = @intCast(@max(height_i32, 0)),
                 });
             },
@@ -2166,7 +2200,6 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                 const m = currentMatrix(&stack);
                 const translate = Matrix3.translation(@floatFromInt(ellipse_cmd.rect.x), @floatFromInt(ellipse_cmd.rect.y));
                 const ellipse_matrix = Matrix3.mul(m, translate);
-                const inv = ellipse_matrix.inverse() orelse continue;
 
                 const bounds = transformRectToBounds(.{
                     .x = 0,
@@ -2204,6 +2237,15 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                 const rx: f32 = width_f / 2.0;
                 const ry: f32 = height_f / 2.0;
 
+                const center = ellipse_matrix.transformPoint(.{ .x = rx, .y = ry });
+                const x_axis = ellipse_matrix.transformVector(.{ .x = rx, .y = 0.0 });
+                const y_axis = ellipse_matrix.transformVector(.{ .x = 0.0, .y = ry });
+
+                const det = x_axis.x * y_axis.y - x_axis.y * y_axis.x;
+                if (@abs(det) <= 0.000001) continue;
+
+                const inv_det = 1.0 / det;
+
                 const x_vec = ellipse_matrix.transformVector(.{ .x = 1.0, .y = 0.0 });
                 const y_vec = ellipse_matrix.transformVector(.{ .x = 0.0, .y = 1.0 });
 
@@ -2219,15 +2261,17 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                 while (y <= y1) : (y += 1) {
                     var x = x0;
                     while (x <= x1) : (x += 1) {
-                        const sample = inv.transformPoint(.{
+                        const sample = .{
                             .x = @as(f32, @floatFromInt(x)) + 0.5,
                             .y = @as(f32, @floatFromInt(y)) + 0.5,
-                        });
+                        };
 
-                        const dx = sample.x - rx;
-                        const dy = sample.y - ry;
+                        const qx = sample.x - center.x;
+                        const qy = sample.y - center.y;
 
-                        const norm = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+                        const a = (qx * y_axis.y - qy * x_axis.y) * inv_det;
+                        const b = (x_axis.x * qy - y_axis.x * qx) * inv_det;
+                        const norm = a * a + b * b;
 
                         if (ellipse_cmd.fill) |f| {
                             if (norm <= 1.0) {
@@ -2238,20 +2282,35 @@ pub fn renderScene(engine: *Engine, allocator: std.mem.Allocator) void {
                         if (ellipse_cmd.stroke) |s| {
                             if (s.width == 0) continue;
 
-                            const dist = std.math.sqrt(norm) - 1.0;
-                            const screen_dist = @abs(dist * stroke_scale);
-
                             const half_stroke_width: f32 = @as(f32, @floatFromInt(s.width)) / 2.0;
 
-                            if (screen_dist <= half_stroke_width) {
-                                var angle = std.math.atan2(dy / ry, dx / rx);
-                                if (angle < 0.0) angle += two_pi;
+                            // rows of inverse matrix from screen space -> normalized ellipse space
+                            const da_dx = y_axis.y * inv_det;
+                            const da_dy = -x_axis.y * inv_det;
+                            const db_dx = -y_axis.x * inv_det;
+                            const db_dy = x_axis.x * inv_det;
 
-                                const pos = angle / two_pi * perimeter;
-                                const step: usize = @intFromFloat(@floor(pos));
+                            // F = a*a + b*b - 1
+                            const f = norm - 1.0;
 
-                                if (shouldDrawStep(s.style, step)) {
-                                    putPixelClipSigned(engine, x, y, s.color, &clip_stack);
+                            // gradient of F in screen space
+                            const grad_x = 2.0 * (a * da_dx + b * db_dx);
+                            const grad_y = 2.0 * (a * da_dy + b * db_dy);
+                            const grad_len = std.math.sqrt(grad_x * grad_x + grad_y * grad_y);
+
+                            if (grad_len > 0.000001) {
+                                const screen_dist = @abs(f) / grad_len;
+
+                                if (screen_dist <= half_stroke_width) {
+                                    var angle = std.math.atan2(b, a);
+                                    if (angle < 0.0) angle += two_pi;
+
+                                    const pos = angle / two_pi * perimeter;
+                                    const step: usize = @intFromFloat(@floor(pos));
+
+                                    if (shouldDrawStep(s.style, step)) {
+                                        putPixelClipSigned(engine, x, y, s.color, &clip_stack);
+                                    }
                                 }
                             }
                         }

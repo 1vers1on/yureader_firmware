@@ -1,6 +1,7 @@
 /dts-v1/;
 
 #include <nordic/nrf54l15_cpuapp.dtsi>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <zephyr/dt-bindings/i2c/i2c.h>
 #include <zephyr/dt-bindings/sensor/lsm6dsv16x.h>
 #include "yureader-pinctrl.dtsi"
@@ -30,6 +31,8 @@
 	};
 	
 	buttons {
+		compatible = "gpio-keys";
+
 		button0: button_0 {
 			gpios = <&gpio1 13 GPIO_ACTIVE_LOW>;
 			label = "Push button 0";
@@ -69,6 +72,15 @@
 
 	zephyr,user {
 		sd-cd-gpios = <&gpio2 10 GPIO_ACTIVE_LOW>;
+	};
+
+	aliases {
+		sw0 = &button0;
+		sw1 = &button1;
+		sw2 = &button2;
+		sw3 = &button3;
+		sw4 = &button4;
+		sw5 = &button5;
 	};
 };
 
