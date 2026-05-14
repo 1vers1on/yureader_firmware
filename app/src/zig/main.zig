@@ -350,4 +350,8 @@ export fn zig_main() callconv(.c) void {
     };
     
     log.info("Demonstrations completed successfully.", .{});
+
+    while (true) {
+        z.k_busy_wait(100);
+    }
 }

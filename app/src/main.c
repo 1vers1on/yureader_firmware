@@ -1,8 +1,10 @@
 #include <zephyr/kernel.h>
 
-extern void zig_main(void);
-
 int main(void) {
-    zig_main();
-    return 0;
+    volatile int alive = 0;
+
+    while (1) {
+        alive++;
+        __asm volatile ("nop");
+    }
 }

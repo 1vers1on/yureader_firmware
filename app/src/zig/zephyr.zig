@@ -11,6 +11,13 @@ extern fn zig_k_aligned_alloc(alignment: usize, size: usize) ?*anyopaque;
 
 extern fn zig_k_uptime_get() i64;
 extern fn zig_k_cycle_get_32() u32;
+extern fn zig_crc32_c(crc: u32, data: [*]const u8, len: usize, first_pkt: bool, last_pkt: bool) u32;
+extern fn zig_crc32c_single(data: [*]const u8, len: usize) u32;
+extern fn zig_k_busy_wait(ms: i32) void;
+
+pub fn k_busy_wait(ms: i32) void {
+    zig_k_busy_wait(ms);
+}
 
 pub fn k_msleep(ms: i32) void {
     zig_k_msleep(ms);
@@ -77,6 +84,14 @@ pub fn uptimeGet() i64 {
 
 pub fn cycleGet32() u32 {
     return zig_k_cycle_get_32();
+}
+
+pub fn crc32_c(crc: u32, data: []const u8, first_pkt: bool, last_pkt: bool) u32 {
+    return zig_crc32_c(crc, data.ptr, data.len, first_pkt, last_pkt);
+}
+
+pub fn crc32c_single(data: []const u8) u32 {
+    return zig_crc32c_single(data.ptr, data.len);
 }
 
 pub fn allocator() std.mem.Allocator {

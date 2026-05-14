@@ -423,6 +423,90 @@ fn drawBitmapShowcase(canvas: *gfx.Canvas) !void {
     try canvas.invertXYWH(56, 44, 32, 16);
 }
 
+
+fn drawFillSwatch(canvas: *gfx.Canvas, font_id: Render.FontId, x: i32, y: i32, label: []const u8, pattern: Render.FillPattern) !void {
+    _ = canvas.setTextAlign(.center);
+    _ = canvas.setTextBaseline(.top);
+    try canvas.textXY(x + 34, y, font_id, label);
+
+    try canvas.rect(
+        .{ .x = @intCast(x + 8), .y = @intCast(y + 14), .width = 52, .height = 28 },
+        .{ .color = .black, .pattern = pattern },
+        .{ .color = .black, .width = 1, .style = .solid },
+    );
+}
+
+fn drawFillShowcase(canvas: *gfx.Canvas, font_id: Render.FontId) !void {
+    try canvas.clear(.white);
+    _ = canvas.setTextColor(.black);
+    _ = canvas.setStroke(.{ .color = .black, .width = 1, .style = .solid });
+
+    _ = canvas.setTextAlign(.center);
+    _ = canvas.setTextBaseline(.top);
+    try canvas.text(.{ .x = 148, .y = 2 }, font_id, .black, .center, .top, "Fill Pattern Demo");
+    try canvas.lineWith(.{ .x = 0, .y = 17 }, .{ .x = 295, .y = 17 });
+
+    const samples = [_]struct {
+        label: []const u8,
+        pattern: Render.FillPattern,
+    }{
+        .{ .label = "solid", .pattern = .solid },
+        .{ .label = "checker", .pattern = .checker },
+        .{ .label = "diagonal", .pattern = .diagonal },
+        .{ .label = "crosshatch", .pattern = .crosshatch },
+        .{ .label = "dots", .pattern = .dots },
+        .{ .label = "dither", .pattern = .{ .dither = .{ .pattern = .bayer4x4, .weight = 140 } } },
+    };
+
+    for (samples, 0..) |sample, i| {
+        const col: i32 = @intCast(i % 3);
+        const row: i32 = @intCast(i / 3);
+        try drawFillSwatch(canvas, font_id, 14 + col * 94, 25 + row * 50, sample.label, sample.pattern);
+    }
+}
+
+fn drawDitherSwatch(canvas: *gfx.Canvas, font_id: Render.FontId, x: i32, y: i32, label: []const u8, pattern: Render.OrderedDitherPattern) !void {
+    _ = canvas.setTextAlign(.center);
+    _ = canvas.setTextBaseline(.top);
+    try canvas.textXY(x + 34, y, font_id, label);
+
+    try canvas.rect(
+        .{ .x = @intCast(x + 8), .y = @intCast(y + 14), .width = 52, .height = 28 },
+        .{ .color = .black, .pattern = .{ .dither = .{ .pattern = pattern, .weight = 140 } } },
+        .{ .color = .black, .width = 1, .style = .solid },
+    );
+}
+
+fn drawDitherShowcase(canvas: *gfx.Canvas, font_id: Render.FontId) !void {
+    try canvas.clear(.white);
+    _ = canvas.setTextColor(.black);
+    _ = canvas.setStroke(.{ .color = .black, .width = 1, .style = .solid });
+
+    _ = canvas.setTextAlign(.center);
+    _ = canvas.setTextBaseline(.top);
+    try canvas.text(.{ .x = 148, .y = 2 }, font_id, .black, .center, .top, "Dither Demo weight=140");
+    try canvas.lineWith(.{ .x = 0, .y = 17 }, .{ .x = 295, .y = 17 });
+
+    const samples = [_]struct {
+        label: []const u8,
+        pattern: Render.OrderedDitherPattern,
+    }{
+        .{ .label = "bayer2", .pattern = .bayer2x2 },
+        .{ .label = "bayer4", .pattern = .bayer4x4 },
+        .{ .label = "bayer8", .pattern = .bayer8x8 },
+        .{ .label = "cluster4", .pattern = .clustered4x4 },
+        .{ .label = "cluster8", .pattern = .clustered8x8 },
+        .{ .label = "halftone4", .pattern = .halftone4x4 },
+    };
+
+    for (samples, 0..) |sample, i| {
+        const col: i32 = @intCast(i % 3);
+        const row: i32 = @intCast(i / 3);
+        try drawDitherSwatch(canvas, font_id, 14 + col * 94, 25 + row * 50, sample.label, sample.pattern);
+    }
+}
+
+
 fn drawNoopShowcase(canvas: *gfx.Canvas) !void {
     try canvas.clear(.white);
     try canvas.submit(.{ .nop = {} });
@@ -702,6 +786,20 @@ pub fn main() !void {
     try renderer.present(.none);
     try writePbm("desktop-demo-output/bitmap.pbm", renderer.framebuffer());
     std.log.info("wrote bitmap.pbm", .{});
+
+    // Fill pattern demo
+    canvas = try renderer.begin();
+    try drawFillShowcase(&canvas, font_id);
+    try renderer.present(.none);
+    try writePbm("desktop-demo-output/fills.pbm", renderer.framebuffer());
+    std.log.info("wrote fills.pbm", .{});
+
+    // Dither pattern demo
+    canvas = try renderer.begin();
+    try drawDitherShowcase(&canvas, font_id);
+    try renderer.present(.none);
+    try writePbm("desktop-demo-output/dithers.pbm", renderer.framebuffer());
+    std.log.info("wrote dithers.pbm", .{});
 
     // No-op demo
     canvas = try renderer.begin();

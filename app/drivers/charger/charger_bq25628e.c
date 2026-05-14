@@ -187,7 +187,9 @@ static inline int bq25628e_write16(const struct device* dev, uint8_t reg, uint16
     uint8_t buf[3];
 
     buf[0] = reg;
-    sys_put_le16(value, &buf[1]);
+    /* Avoid unaligned 16-bit stores on Cortex-M33. */
+    buf[1] = (uint8_t)(value & 0xff);
+    buf[2] = (uint8_t)(value >> 8);
 
     return i2c_write_dt(&config->i2c, buf, sizeof(buf));
 }
@@ -201,7 +203,8 @@ static inline int bq25628e_read16(const struct device* dev, uint8_t reg, uint16_
     if (ret < 0) {
         LOG_ERR("Unable to read register");
     }
-    *value = sys_get_le16(i2c_data);
+    /* Avoid unaligned 16-bit loads on Cortex-M33. */
+    *value = (uint16_t)i2c_data[0] | ((uint16_t)i2c_data[1] << 8);
 
     return ret;
 }
